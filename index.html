@@ -223,13 +223,13 @@
 				   fetch(`${GOOGLE_SCRIPT_URL}?action=getApuestas`),
 				   fetch(`${GOOGLE_SCRIPT_URL}?action=getHistorial`)
 			   ]);
-
+ 
 			   if (apuestasResponse.ok && historialResponse.ok) {
 				   const apuestasData = await apuestasResponse.json();
 				   const historialData = await historialResponse.json();
-
+ 
 				   console.log('Datos recibidos de Google Sheets:', { apuestasData, historialData });
-
+ 
 				   // Procesar datos de Google Sheets
 				   apuestas = apuestasData.length > 0 ? apuestasData.map(item => ({
 					   id: parseInt(item.id) || 0,
@@ -244,7 +244,7 @@
 					   resultado: item.resultado || '',
 					   tortillas: parseInt(item.tortillas) || 0
 				   })) : [];
-
+ 
 				   historial = historialData.length > 0 ? historialData.map(item => ({
 					   id: parseInt(item.id) || 0,
 					   titulo: item.titulo || '',
@@ -260,9 +260,13 @@
 				   })) : [];
 				   
 				   // Actualizar interfaz
-				   renderApuestasActivas();
-				   renderHistorial();
-				   updateEstadisticas();
+				   try {
+					   renderApuestasActivas();
+					   renderHistorial();
+					   updateEstadisticas();
+				   } catch (renderError) {
+					   console.error('Error actualizando la interfaz:', renderError);
+				   }
 			   } else {
 				   console.log('Error en respuesta de Google Sheets:', apuestasResponse.status, historialResponse.status);
 			   }
@@ -345,38 +349,55 @@
 	   const listaParticipantes = document.getElementById('lista-participantes');
  
 	   // Tab switching
-	   tabActivas.addEventListener('click', () => {
-		   contenidoActivas.classList.remove('hidden');
-		   contenidoNueva.classList.add('hidden');
-		   contenidoHistorial.classList.add('hidden');
-		   document.getElementById('header-image').src = "https://github.com/rubioelastic/tortilla-apuestas/raw/main/ConTortilla.png";
-		   updateActiveTab(tabActivas, tabNueva, tabHistorial);
-		   renderApuestasActivas();
-	   });
+	   function initializeTabs() {
+		   console.log('Inicializando pestañas...');
+		   
+		   if (tabActivas) {
+			   tabActivas.addEventListener('click', () => {
+				   console.log('Click en Apuestas Activas');
+				   contenidoActivas.classList.remove('hidden');
+				   contenidoNueva.classList.add('hidden');
+				   contenidoHistorial.classList.add('hidden');
+				   document.getElementById('header-image').src = "https://github.com/rubioelastic/tortilla-apuestas/raw/main/ConTortilla.png";
+				   updateActiveTab(tabActivas, tabNueva, tabHistorial);
+				   renderApuestasActivas();
+			   });
+		   }
  
-	   tabNueva.addEventListener('click', () => {
-		   contenidoActivas.classList.add('hidden');
-		   contenidoNueva.classList.remove('hidden');
-		   contenidoHistorial.classList.add('hidden');
-		   updateActiveTab(tabNueva, tabActivas, tabHistorial);
-	   });
+		   if (tabNueva) {
+			   tabNueva.addEventListener('click', () => {
+				   console.log('Click en Nueva Apuesta');
+				   contenidoActivas.classList.add('hidden');
+				   contenidoNueva.classList.remove('hidden');
+				   contenidoHistorial.classList.add('hidden');
+				   updateActiveTab(tabNueva, tabActivas, tabHistorial);
+			   });
+		   }
  
-	   tabHistorial.addEventListener('click', () => {
-		   contenidoActivas.classList.add('hidden');
-		   contenidoNueva.classList.add('hidden');
-		   contenidoHistorial.classList.remove('hidden');
-		   updateActiveTab(tabHistorial, tabActivas, tabNueva);
-		   document.getElementById('header-image').src = "https://github.com/rubioelastic/tortilla-apuestas/raw/main/SinTortilla.png";
-		   renderHistorial();
-		   updateEstadisticas();
-	   });
+		   if (tabHistorial) {
+			   tabHistorial.addEventListener('click', () => {
+				   console.log('Click en Historial');
+				   contenidoActivas.classList.add('hidden');
+				   contenidoNueva.classList.add('hidden');
+				   contenidoHistorial.classList.remove('hidden');
+				   updateActiveTab(tabHistorial, tabActivas, tabNueva);
+				   document.getElementById('header-image').src = "https://github.com/rubioelastic/tortilla-apuestas/raw/main/SinTortilla.png";
+				   renderHistorial();
+				   updateEstadisticas();
+			   });
+		   }
+	   }
  
 	   function updateActiveTab(activeTab, ...otherTabs) {
-		   activeTab.classList.remove('text-amber-600');
-		   activeTab.classList.add('text-amber-800', 'border-amber-500');
+		   if (activeTab) {
+			   activeTab.classList.remove('text-amber-600');
+			   activeTab.classList.add('text-amber-800', 'border-amber-500');
+		   }
 		   otherTabs.forEach(tab => {
-			   tab.classList.remove('text-amber-800', 'border-amber-500');
-			   tab.classList.add('text-amber-600');
+			   if (tab) {
+				   tab.classList.remove('text-amber-800', 'border-amber-500');
+				   tab.classList.add('text-amber-600');
+			   }
 		   });
 	   }
  
@@ -557,65 +578,74 @@
 	   }
 	   
 	   // Event listeners para participantes
-	   btnAñadirParticipante.addEventListener('click', añadirParticipante);
+	   if (btnAñadirParticipante) {
+		   btnAñadirParticipante.addEventListener('click', añadirParticipante);
+	   }
 	   
-	   inputNuevoParticipante.addEventListener('keypress', function(e) {
-		   if (e.key === 'Enter') {
+	   if (inputNuevoParticipante) {
+		   inputNuevoParticipante.addEventListener('keypress', function(e) {
+			   if (e.key === 'Enter') {
+				   e.preventDefault();
+				   añadirParticipante();
+			   }
+		   });
+	   }
+	   
+	   // Event listeners para formulario
+	   if (formNuevaApuesta) {
+		   formNuevaApuesta.addEventListener('submit', async function(e) {
 			   e.preventDefault();
-			   añadirParticipante();
-		   }
-	   });
+			   
+			   if (!isOnline) {
+				   alert('⚠️ Sin conexión a internet. No se puede crear la apuesta.');
+				   return;
+			   }
+			   
+			   const titulo = document.getElementById('titulo').value;
+			   const descripcion = document.getElementById('descripcion').value;
+			   
+			   const participantes = Array.from(document.querySelectorAll('#lista-participantes input[type="checkbox"]:checked'))
+				   .map(el => el.value);
+			   
+			   if (participantes.length < 2) {
+				   alert('¡Necesitas al menos 2 participantes para una apuesta!');
+				   return;
+			   }
+			   
+			   const nuevaApuesta = {
+				   id: apuestas.length > 0 ? Math.max(...apuestas.map(a => a.id), 0) + 1 : 1,
+				   titulo,
+				   descripcion,
+				   participantes,
+				   fecha: new Date().toISOString().split('T')[0],
+				   estado: 'activa',
+				   ganador: null,
+				   resultado: "",
+				   tortillas: 0
+			   };
+			   
+			   // Guardar en Google Sheets
+			   const success = await saveToGoogleSheets('addApuesta', nuevaApuesta);
+			   if (success) {
+				   // Recargar datos desde Google Sheets para mantener sincronización
+				   await syncWithGoogleSheets();
+				   
+				   // Reset form
+				   formNuevaApuesta.reset();
+				   
+				   // Switch to active bets tab and update
+				   if (tabActivas) {
+					   tabActivas.click();
+				   }
+				   
+				   // Notificación
+				   alert('¡Nueva apuesta creada! 🎉');
+			   } else {
+				   alert('❌ Error al crear la apuesta. Inténtalo de nuevo.');
+			   }
+		   });
+	   }
 
-	   // Form handler - nueva apuesta
-	   formNuevaApuesta.addEventListener('submit', async function(e) {
-		   e.preventDefault();
-		   
-		   if (!isOnline) {
-			   alert('⚠️ Sin conexión a internet. No se puede crear la apuesta.');
-			   return;
-		   }
-		   
-		   const titulo = document.getElementById('titulo').value;
-		   const descripcion = document.getElementById('descripcion').value;
-		   
-		   const participantes = Array.from(document.querySelectorAll('#lista-participantes input[type="checkbox"]:checked'))
-			   .map(el => el.value);
-		   
-		   if (participantes.length < 2) {
-			   alert('¡Necesitas al menos 2 participantes para una apuesta!');
-			   return;
-		   }
-		   
-		   const nuevaApuesta = {
-			   id: apuestas.length > 0 ? Math.max(...apuestas.map(a => a.id), 0) + 1 : 1,
-			   titulo,
-			   descripcion,
-			   participantes,
-			   fecha: new Date().toISOString().split('T')[0],
-			   estado: 'activa',
-			   ganador: null,
-			   resultado: "",
-			   tortillas: 0
-		   };
-		   
-		   // Guardar en Google Sheets
-		   const success = await saveToGoogleSheets('addApuesta', nuevaApuesta);
-		   if (success) {
-			   // Recargar datos desde Google Sheets para mantener sincronización
-			   await syncWithGoogleSheets();
-			   
-			   // Reset form
-			   formNuevaApuesta.reset();
-			   
-			   // Switch to active bets tab and update
-			   tabActivas.click();
-			   
-			   // Notificación
-			   alert('¡Nueva apuesta creada! 🎉');
-		   } else {
-			   alert('❌ Error al crear la apuesta. Inténtalo de nuevo.');
-		   }
-	   });
  
 	   // Marcar como pagada
 	   async function marcarPagada(id) {
@@ -693,6 +723,11 @@
  
 	   // Initialize
 	   document.addEventListener('DOMContentLoaded', () => {
+		   console.log('DOM cargado, inicializando aplicación...');
+		   
+		   // Inicializar pestañas
+		   initializeTabs();
+		   
 		   updateConnectionStatus();
 		   
 		   // Cargar datos desde Google Sheets
