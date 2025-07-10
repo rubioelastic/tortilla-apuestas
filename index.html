@@ -490,7 +490,7 @@
 		   }
 		   
 		   const nuevaApuesta = {
-			   id: Math.max(...apuestas.map(a => a.id), 0) + 1,
+			   id: apuestas.length > 0 ? Math.max(...apuestas.map(a => a.id), 0) + 1 : 1,
 			   titulo,
 			   descripcion,
 			   participantes,
