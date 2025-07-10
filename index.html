@@ -286,12 +286,19 @@
 			   const result = await response.text();
 			   console.log(`Google Sheets respuesta:`, result);
 			   
-			   if (!response.ok) {
-				   console.error(`Error HTTP: ${response.status}`);
-				   return false;
+			   // Verificar si la respuesta indica éxito
+			   if (response.ok && (result.includes('correctamente') || result.includes('añadida') || result.includes('actualizada') || result.includes('eliminada') || result.includes('movida'))) {
+				   return true;
 			   }
 			   
-			   return true;
+			   // Si no hay error HTTP pero tampoco mensaje de éxito, asumir que funcionó
+			   if (response.ok) {
+				   console.log('Operación completada (respuesta sin mensaje específico)');
+				   return true;
+			   }
+			   
+			   console.error(`Error HTTP: ${response.status}`);
+			   return false;
 		   } catch (error) {
 			   console.error('Error guardando en Google Sheets:', error);
 			   return false;
