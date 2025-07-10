@@ -265,15 +265,20 @@
 
 	   async function saveToGoogleSheets(action, data) {
 		   if (!isOnline || !GOOGLE_SCRIPT_URL) {
+			   console.log('Sin conexión o URL no configurada');
 			   return false;
 		   }
 
 		   try {
-			   console.log(`Enviando a Google Sheets - Action: ${action}, Data:`, data);
+			   console.log(`🔄 Enviando a Google Sheets - Action: ${action}`);
+			   console.log(`📊 Data:`, data);
 			   
 			   const params = new URLSearchParams();
 			   params.append('action', action);
 			   params.append('data', JSON.stringify(data));
+
+			   console.log(`📤 Enviando POST a: ${GOOGLE_SCRIPT_URL}`);
+			   console.log(`📝 Body:`, params.toString());
 
 			   const response = await fetch(GOOGLE_SCRIPT_URL, {
 				   method: 'POST',
@@ -283,19 +288,30 @@
 				   body: params.toString()
 			   });
 
-			   const result = await response.text();
-			   console.log(`Google Sheets respuesta:`, result);
+			   console.log(`📥 Response status: ${response.status}`);
+			   console.log(`📥 Response ok: ${response.ok}`);
 			   
-		   // Si la respuesta HTTP es exitosa (200-299), considerar que funcionó
-		   if (response.ok) {
-			   console.log('Operación completada exitosamente');
-			   return true;
-		   }
-		   
-		   console.error(`Error HTTP: ${response.status} - ${result}`);
-		   return false;
+			   const result = await response.text();
+			   console.log(`📄 Response text:`, result);
+			   
+			   // Intentar parsear como JSON si es posible
+			   try {
+				   const jsonResult = JSON.parse(result);
+				   console.log(`📋 Response JSON:`, jsonResult);
+			   } catch (e) {
+				   console.log(`📋 Response no es JSON válido`);
+			   }
+			   
+			   // Considerar exitoso si el status es 200-299, independientemente del contenido
+			   if (response.status >= 200 && response.status < 300) {
+				   console.log('✅ Operación completada exitosamente');
+				   return true;
+			   }
+			   
+			   console.error(`❌ Error HTTP: ${response.status} - ${result}`);
+			   return false;
 		   } catch (error) {
-			   console.error('Error guardando en Google Sheets:', error);
+			   console.error('❌ Error de red guardando en Google Sheets:', error);
 			   return false;
 		   }
 	   }
