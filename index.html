@@ -305,23 +305,9 @@
 			   apuestas = JSON.parse(apuestasGuardadas);
 
 		   
-		   if (historialGuardado) {
+
 			   historial = JSON.parse(historialGuardado);
-		   } else {
-			   // Datos de ejemplo solo si no hay datos guardados
-			   historial = [
-				   {
-					   id: 3,
-					   titulo: "Quién llega tarde",
-					   descripcion: "Jorge llegará más de 15 minutos tarde a la cena",
-					   participantes: ["Jorge", "María", "Carlos", "Lucía"],
-					   fecha: "2023-06-01",
-					   estado: "finalizada",
-					   ganador: "María",
-					   tortillas: 1
-				   }
-			   ];
-		   }
+		  
 	   }
 
 	   function guardarDatosLocal() {
