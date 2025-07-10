@@ -268,20 +268,31 @@
 		   }
 
 		   try {
-			   const formData = new FormData();
-			   formData.append('action', action);
-			   formData.append('data', JSON.stringify(data));
+			   console.log(`Enviando a Google Sheets - Action: ${action}, Data:`, data);
+			   
+			   const params = new URLSearchParams();
+			   params.append('action', action);
+			   params.append('data', JSON.stringify(data));
 
 			   const response = await fetch(GOOGLE_SCRIPT_URL, {
 				   method: 'POST',
-				   body: formData
+				   headers: {
+					   'Content-Type': 'application/x-www-form-urlencoded',
+				   },
+				   body: params.toString()
 			   });
 
 			   const result = await response.text();
-			   console.log(`Google Sheets ${action}:`, result);
-			   return response.ok;
+			   console.log(`Google Sheets respuesta:`, result);
+			   
+			   if (!response.ok) {
+				   console.error(`Error HTTP: ${response.status}`);
+				   return false;
+			   }
+			   
+			   return true;
 		   } catch (error) {
-			   console.log('Error guardando en Google Sheets:', error);
+			   console.error('Error guardando en Google Sheets:', error);
 			   return false;
 		   }
 	   }
