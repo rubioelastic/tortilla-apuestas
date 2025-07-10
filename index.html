@@ -302,32 +302,8 @@
 		   const apuestasGuardadas = localStorage.getItem('tortillaBET_apuestas');
 		   const historialGuardado = localStorage.getItem('tortillaBET_historial');
 		   
-		   if (apuestasGuardadas) {
 			   apuestas = JSON.parse(apuestasGuardadas);
-		   } else {
-			   // Datos de ejemplo solo si no hay datos guardados
-			   apuestas = [
-				   {
-					   id: 1,
-					   titulo: "¿Lloverá el fin de semana?",
-					   descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
-					   participantes: ["Jorge", "María", "Carlos"],
-					   fecha: "2023-06-15",
-					   estado: "activa",
-					   ganador: null,
-					   resultado: ""
-				   },
-				   {
-					   id: 2,
-					   titulo: "Apuesta del Mundial",
-					   descripcion: "Argentina ganará el próximo mundial",
-					   participantes: ["Carlos", "Lucía"],
-					   fecha: "2023-06-10",
-					   estado: "activa",
-					   ganador: null
-				   }
-			   ];
-		   }
+
 		   
 		   if (historialGuardado) {
 			   historial = JSON.parse(historialGuardado);
