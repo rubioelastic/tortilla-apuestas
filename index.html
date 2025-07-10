@@ -99,7 +99,17 @@
 				   
 				   <div>
 					   <label class="block text-sm font-medium text-amber-700">Participantes</label>
-					   <div class="mt-1 space-y-2">
+					   
+					   <!-- Añadir nuevo participante -->
+					   <div class="mt-2 flex gap-2">
+						   <input type="text" id="nuevo-participante" class="flex-1 rounded-md border-amber-300 shadow-sm focus:border-amber-500 focus:ring-amber-500" placeholder="Nombre del participante">
+						   <button type="button" id="btn-añadir-participante" class="px-4 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors">
+							   <i class="fas fa-plus"></i> Añadir
+						   </button>
+					   </div>
+					   
+					   <!-- Lista de participantes -->
+					   <div id="lista-participantes" class="mt-3 space-y-2">
 						   <div class="flex items-center">
 							   <input type="checkbox" id="participante1" value="Jorge" class="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500">
 							   <label for="participante1" class="ml-2 block text-sm text-amber-700">Jorge</label>
@@ -165,6 +175,7 @@
 	   let historial = [];
 	   let isOnline = navigator.onLine;
 	   let isSyncing = false;
+	   let participanteCounter = 4; // Contador para IDs únicos de participantes
 
 	   // Funciones de conectividad
 	   function updateConnectionStatus() {
@@ -329,6 +340,9 @@
 	   const totalApuestas = document.getElementById('total-apuestas');
 	   const tortillasPagadas = document.getElementById('tortillas-pagadas');
 	   const reyTortilla = document.getElementById('rey-tortilla');
+	   const btnAñadirParticipante = document.getElementById('btn-añadir-participante');
+	   const inputNuevoParticipante = document.getElementById('nuevo-participante');
+	   const listaParticipantes = document.getElementById('lista-participantes');
  
 	   // Tab switching
 	   tabActivas.addEventListener('click', () => {
@@ -487,6 +501,71 @@
 		   reyTortilla.textContent = rey !== '-' ? `${rey} (${maxGanadas})` : rey;
 	   }
  
+	   // Función para añadir participante
+	   function añadirParticipante() {
+		   const nombre = inputNuevoParticipante.value.trim();
+		   
+		   if (!nombre) {
+			   alert('Por favor, introduce un nombre para el participante');
+			   return;
+		   }
+		   
+		   // Verificar que no exista ya
+		   const participantesExistentes = Array.from(document.querySelectorAll('#lista-participantes input[type="checkbox"]'))
+			   .map(input => input.value.toLowerCase());
+		   
+		   if (participantesExistentes.includes(nombre.toLowerCase())) {
+			   alert('Este participante ya existe en la lista');
+			   return;
+		   }
+		   
+		   // Crear nuevo checkbox
+		   participanteCounter++;
+		   const participanteId = `participante${participanteCounter}`;
+		   
+		   const participanteDiv = document.createElement('div');
+		   participanteDiv.className = 'flex items-center justify-between';
+		   participanteDiv.innerHTML = `
+			   <div class="flex items-center">
+				   <input type="checkbox" id="${participanteId}" value="${nombre}" class="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500">
+				   <label for="${participanteId}" class="ml-2 block text-sm text-amber-700">${nombre}</label>
+			   </div>
+			   <button type="button" class="text-red-500 hover:text-red-700 ml-2" onclick="eliminarParticipante(this)" title="Eliminar participante">
+				   <i class="fas fa-times"></i>
+			   </button>
+		   `;
+		   
+		   listaParticipantes.appendChild(participanteDiv);
+		   inputNuevoParticipante.value = '';
+	   }
+	   
+	   // Función para eliminar participante
+	   function eliminarParticipante(button) {
+		   const participanteDiv = button.closest('.flex');
+		   const checkbox = participanteDiv.querySelector('input[type="checkbox"]');
+		   
+		   // No permitir eliminar participantes predeterminados
+		   const participantesPredeterminados = ['Jorge', 'María', 'Carlos', 'Lucía'];
+		   if (participantesPredeterminados.includes(checkbox.value)) {
+			   alert('No puedes eliminar los participantes predeterminados');
+			   return;
+		   }
+		   
+		   if (confirm(`¿Estás seguro de que quieres eliminar a ${checkbox.value}?`)) {
+			   participanteDiv.remove();
+		   }
+	   }
+	   
+	   // Event listeners para participantes
+	   btnAñadirParticipante.addEventListener('click', añadirParticipante);
+	   
+	   inputNuevoParticipante.addEventListener('keypress', function(e) {
+		   if (e.key === 'Enter') {
+			   e.preventDefault();
+			   añadirParticipante();
+		   }
+	   });
+
 	   // Form handler - nueva apuesta
 	   formNuevaApuesta.addEventListener('submit', async function(e) {
 		   e.preventDefault();
