@@ -32,9 +32,26 @@
 		   50% { transform: translateY(-10px); }
 		   100% { transform: translateY(0px); }
 	   }
+	   .status-indicator {
+		   position: fixed;
+		   top: 10px;
+		   right: 10px;
+		   padding: 5px 10px;
+		   border-radius: 15px;
+		   font-size: 12px;
+		   z-index: 1000;
+	   }
+	   .online { background-color: #10b981; color: white; }
+	   .offline { background-color: #ef4444; color: white; }
+	   .syncing { background-color: #f59e0b; color: white; }
    </style>
 </head>
 <body class="tortilla-bg min-h-screen">
+   <!-- Indicador de estado -->
+   <div id="status-indicator" class="status-indicator offline">
+	   <i class="fas fa-wifi"></i> <span id="status-text">Sin conexión</span>
+   </div>
+
    <div class="container mx-auto px-4 py-8 max-w-4xl">
 	   <!-- Header -->
 	   <header class="flex flex-col items-center mb-8">
@@ -140,66 +157,200 @@
    </div>
  
    <script>
-       // Funciones para localStorage
-       function cargarDatos() {
-           const apuestasGuardadas = localStorage.getItem('tortillaBET_apuestas');
-           const historialGuardado = localStorage.getItem('tortillaBET_historial');
-           
-           if (apuestasGuardadas) {
-               apuestas = JSON.parse(apuestasGuardadas);
-           } else {
-               // Datos de ejemplo solo si no hay datos guardados
-               apuestas = [
-                   {
-                       id: 1,
-                       titulo: "¿Lloverá el fin de semana?",
-                       descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
-                       participantes: ["Jorge", "María", "Carlos"],
-                       fecha: "2023-06-15",
-                       estado: "activa",
-                       ganador: null,
-                       resultado: ""
-                   },
-                   {
-                       id: 2,
-                       titulo: "Apuesta del Mundial",
-                       descripcion: "Argentina ganará el próximo mundial",
-                       participantes: ["Carlos", "Lucía"],
-                       fecha: "2023-06-10",
-                       estado: "activa",
-                       ganador: null
-                   }
-               ];
-           }
-           
-           if (historialGuardado) {
-               historial = JSON.parse(historialGuardado);
-           } else {
-               // Datos de ejemplo solo si no hay datos guardados
-               historial = [
-                   {
-                       id: 3,
-                       titulo: "Quién llega tarde",
-                       descripcion: "Jorge llegará más de 15 minutos tarde a la cena",
-                       participantes: ["Jorge", "María", "Carlos", "Lucía"],
-                       fecha: "2023-06-01",
-                       estado: "finalizada",
-                       ganador: "María",
-                       tortillas: 1
-                   }
-               ];
-           }
-       }
+	   // CONFIGURACIÓN - CAMBIA ESTA URL POR LA DE TU GOOGLE APPS SCRIPT
+	   const GOOGLE_SCRIPT_URL = 'TU_URL_DE_GOOGLE_SCRIPT_AQUI';
+	   
+	   // Variables globales
+	   let apuestas = [];
+	   let historial = [];
+	   let isOnline = navigator.onLine;
+	   let isSyncing = false;
 
-       function guardarDatos() {
-           localStorage.setItem('tortillaBET_apuestas', JSON.stringify(apuestas));
-           localStorage.setItem('tortillaBET_historial', JSON.stringify(historial));
-       }
+	   // Funciones de conectividad
+	   function updateConnectionStatus() {
+		   const indicator = document.getElementById('status-indicator');
+		   const statusText = document.getElementById('status-text');
+		   
+		   if (isSyncing) {
+			   indicator.className = 'status-indicator syncing';
+			   statusText.innerHTML = '<i class="fas fa-sync fa-spin"></i> Sincronizando...';
+		   } else if (isOnline) {
+			   indicator.className = 'status-indicator online';
+			   statusText.innerHTML = '<i class="fas fa-cloud"></i> En línea';
+		   } else {
+			   indicator.className = 'status-indicator offline';
+			   statusText.innerHTML = '<i class="fas fa-wifi"></i> Sin conexión';
+		   }
+	   }
 
-       // Variables globales
-       let apuestas = [];
-       let historial = [];
- 
+	   // Detectar cambios de conectividad
+	   window.addEventListener('online', () => {
+		   isOnline = true;
+		   updateConnectionStatus();
+		   syncWithGoogleSheets();
+	   });
+
+	   window.addEventListener('offline', () => {
+		   isOnline = false;
+		   updateConnectionStatus();
+	   });
+
+	   // Funciones de Google Sheets
+	   async function syncWithGoogleSheets() {
+		   if (!isOnline || isSyncing || !GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL === 'TU_URL_DE_GOOGLE_SCRIPT_AQUI') {
+			   return;
+		   }
+
+		   isSyncing = true;
+		   updateConnectionStatus();
+
+		   try {
+			   // Cargar datos desde Google Sheets
+			   const [apuestasResponse, historialResponse] = await Promise.all([
+				   fetch(`${GOOGLE_SCRIPT_URL}?action=getApuestas`),
+				   fetch(`${GOOGLE_SCRIPT_URL}?action=getHistorial`)
+			   ]);
+
+			   if (apuestasResponse.ok && historialResponse.ok) {
+				   const apuestasData = await apuestasResponse.json();
+				   const historialData = await historialResponse.json();
+
+				   // Procesar datos de Google Sheets
+				   apuestas = apuestasData.map(item => ({
+					   id: parseInt(item.id) || 0,
+					   titulo: item.titulo || '',
+					   descripcion: item.descripcion || '',
+					   participantes: typeof item.participantes === 'string' ? 
+						   item.participantes.split(', ').filter(p => p.trim()) : 
+						   (Array.isArray(item.participantes) ? item.participantes : []),
+					   fecha: item.fecha || '',
+					   estado: item.estado || 'activa',
+					   ganador: item.ganador || null,
+					   resultado: item.resultado || '',
+					   tortillas: parseInt(item.tortillas) || 0
+				   }));
+
+				   historial = historialData.map(item => ({
+					   id: parseInt(item.id) || 0,
+					   titulo: item.titulo || '',
+					   descripcion: item.descripcion || '',
+					   participantes: typeof item.participantes === 'string' ? 
+						   item.participantes.split(', ').filter(p => p.trim()) : 
+						   (Array.isArray(item.participantes) ? item.participantes : []),
+					   fecha: item.fecha || '',
+					   estado: 'finalizada',
+					   ganador: item.ganador || '',
+					   resultado: item.resultado || '',
+					   tortillas: parseInt(item.tortillas) || 0
+				   }));
+
+				   // Guardar en localStorage como backup
+				   guardarDatosLocal();
+				   
+				   // Actualizar interfaz
+				   renderApuestasActivas();
+				   renderHistorial();
+				   updateEstadisticas();
+			   }
+		   } catch (error) {
+			   console.log('Error sincronizando con Google Sheets:', error);
+			   // Cargar desde localStorage si falla Google Sheets
+			   cargarDatosLocal();
+		   }
+
+		   isSyncing = false;
+		   updateConnectionStatus();
+	   }
+
+	   async function saveToGoogleSheets(action, data) {
+		   if (!isOnline || !GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL === 'TU_URL_DE_GOOGLE_SCRIPT_AQUI') {
+			   return false;
+		   }
+
+		   try {
+			   const response = await fetch(GOOGLE_SCRIPT_URL, {
+				   method: 'POST',
+				   headers: {
+					   'Content-Type': 'application/x-www-form-urlencoded',
+				   },
+				   body: `action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`
+			   });
+
+			   return response.ok;
+		   } catch (error) {
+			   console.log('Error guardando en Google Sheets:', error);
+			   return false;
+		   }
+	   }
+
+	   // Funciones de localStorage (backup)
+	   function cargarDatosLocal() {
+		   const apuestasGuardadas = localStorage.getItem('tortillaBET_apuestas');
+		   const historialGuardado = localStorage.getItem('tortillaBET_historial');
+		   
+		   if (apuestasGuardadas) {
+			   apuestas = JSON.parse(apuestasGuardadas);
+		   } else {
+			   // Datos de ejemplo solo si no hay datos guardados
+			   apuestas = [
+				   {
+					   id: 1,
+					   titulo: "¿Lloverá el fin de semana?",
+					   descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
+					   participantes: ["Jorge", "María", "Carlos"],
+					   fecha: "2023-06-15",
+					   estado: "activa",
+					   ganador: null,
+					   resultado: ""
+				   },
+				   {
+					   id: 2,
+					   titulo: "Apuesta del Mundial",
+					   descripcion: "Argentina ganará el próximo mundial",
+					   participantes: ["Carlos", "Lucía"],
+					   fecha: "2023-06-10",
+					   estado: "activa",
+					   ganador: null
+				   }
+			   ];
+		   }
+		   
+		   if (historialGuardado) {
+			   historial = JSON.parse(historialGuardado);
+		   } else {
+			   // Datos de ejemplo solo si no hay datos guardados
+			   historial = [
+				   {
+					   id: 3,
+					   titulo: "Quién llega tarde",
+					   descripcion: "Jorge llegará más de 15 minutos tarde a la cena",
+					   participantes: ["Jorge", "María", "Carlos", "Lucía"],
+					   fecha: "2023-06-01",
+					   estado: "finalizada",
+					   ganador: "María",
+					   tortillas: 1
+				   }
+			   ];
+		   }
+	   }
+
+	   function guardarDatosLocal() {
+		   localStorage.setItem('tortillaBET_apuestas', JSON.stringify(apuestas));
+		   localStorage.setItem('tortillaBET_historial', JSON.stringify(historial));
+	   }
+
+	   // Función híbrida para guardar datos
+	   async function guardarDatos() {
+		   // Siempre guardar en localStorage
+		   guardarDatosLocal();
+		   
+		   // Intentar guardar en Google Sheets si hay conexión
+		   if (isOnline) {
+			   // Aquí podrías implementar lógica más sofisticada
+			   // para sincronizar cambios específicos
+		   }
+	   }
+
 	   // DOM Elements
 	   const tabActivas = document.getElementById('tab-activas');
 	   const tabNueva = document.getElementById('tab-nueva');
@@ -373,7 +524,7 @@
 	   }
  
 	   // Form handler - nueva apuesta
-	   formNuevaApuesta.addEventListener('submit', function(e) {
+	   formNuevaApuesta.addEventListener('submit', async function(e) {
 		   e.preventDefault();
 		   
 		   const titulo = document.getElementById('titulo').value;
@@ -388,44 +539,56 @@
 		   }
 		   
 		   const nuevaApuesta = {
-			   id: apuestas.length + 1,
+			   id: Math.max(...apuestas.map(a => a.id), 0) + 1,
 			   titulo,
 			   descripcion,
 			   participantes,
 			   fecha: new Date().toISOString().split('T')[0],
 			   estado: 'activa',
 			   ganador: null,
-			   resultado: ""
+			   resultado: "",
+			   tortillas: 0
 		   };
 		   
-           apuestas.push(nuevaApuesta);
-           guardarDatos(); // Guardar en localStorage
-           
-           // Reset form
-           formNuevaApuesta.reset();
-           
-           // Switch to active bets tab and update
-           tabActivas.click();
-           renderApuestasActivas();
-           
-           // Notificación ficticia (en una app real usarías la API de notificaciones)
-           alert('¡Nueva apuesta creada! 🎉');
+		   apuestas.push(nuevaApuesta);
+		   
+		   // Guardar localmente y en Google Sheets
+		   await guardarDatos();
+		   if (isOnline) {
+			   await saveToGoogleSheets('addApuesta', nuevaApuesta);
+		   }
+		   
+		   // Reset form
+		   formNuevaApuesta.reset();
+		   
+		   // Switch to active bets tab and update
+		   tabActivas.click();
+		   renderApuestasActivas();
+		   
+		   // Notificación
+		   alert('¡Nueva apuesta creada! 🎉');
 	   });
  
-       // Marcar como pagada
-       function marcarPagada(id) {
-           const apuesta = apuestas.find(a => a.id === id);
-           if (!apuesta) return;
-           
-           if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
-               apuestas = apuestas.filter(a => a.id !== id);
-               guardarDatos(); // Guardar en localStorage
-               renderApuestasActivas();
-           }
-       }
+	   // Marcar como pagada
+	   async function marcarPagada(id) {
+		   const apuesta = apuestas.find(a => a.id === id);
+		   if (!apuesta) return;
+		   
+		   if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
+			   apuestas = apuestas.filter(a => a.id !== id);
+			   
+			   // Guardar cambios
+			   await guardarDatos();
+			   if (isOnline) {
+				   await saveToGoogleSheets('deleteApuesta', { id });
+			   }
+			   
+			   renderApuestasActivas();
+		   }
+	   }
  
 	   // Finalizar apuesta
-	   function finalizarApuesta(id) {
+	   async function finalizarApuesta(id) {
 		   const apuesta = apuestas.find(a => a.id === id);
 		   if (!apuesta) return;
 		   
@@ -438,17 +601,23 @@
 		   const resultado = prompt(`Introduce el resultado de "${apuesta.titulo}":`, "Detalles del resultado");
 		   const tortillas = parseInt(prompt('¿Cuántas tortillas se deben?', '1')) || 1;
 		   
-           // Mover a historial
-           apuesta.estado = 'finalizada'; // Cambiar de 'activa' a 'finalizada' pero mantenerla en apuestas
-           apuesta.ganador = ganador;
-           apuesta.tortillas = tortillas;
-           apuesta.resultado = resultado || "";
-           
-           // Mantener en apuestas hasta que se marque como pagada
-           historial.unshift({...apuesta});
-           guardarDatos(); // Guardar en localStorage
-           
-           renderApuestasActivas();
+		   // Actualizar apuesta
+		   apuesta.estado = 'finalizada';
+		   apuesta.ganador = ganador;
+		   apuesta.tortillas = tortillas;
+		   apuesta.resultado = resultado || "";
+		   
+		   // Mantener en apuestas hasta que se marque como pagada
+		   historial.unshift({...apuesta});
+		   
+		   // Guardar cambios
+		   await guardarDatos();
+		   if (isOnline) {
+			   await saveToGoogleSheets('updateApuesta', apuesta);
+			   await saveToGoogleSheets('moveToHistorial', apuesta);
+		   }
+		   
+		   renderApuestasActivas();
 		   
 		   // Notificación mejorada
 		   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
@@ -471,12 +640,27 @@
 		   updateEstadisticas();
 	   }
  
-       // Initialize
-       document.addEventListener('DOMContentLoaded', () => {
-           cargarDatos(); // Cargar datos del localStorage
-           renderApuestasActivas();
-           renderHistorial();
-           updateEstadisticas();
+	   // Initialize
+	   document.addEventListener('DOMContentLoaded', () => {
+		   updateConnectionStatus();
+		   
+		   // Intentar cargar desde Google Sheets primero
+		   if (isOnline) {
+			   syncWithGoogleSheets();
+		   } else {
+			   // Si no hay conexión, cargar desde localStorage
+			   cargarDatosLocal();
+			   renderApuestasActivas();
+			   renderHistorial();
+			   updateEstadisticas();
+		   }
+		   
+		   // Sincronizar cada 30 segundos si hay conexión
+		   setInterval(() => {
+			   if (isOnline && !isSyncing) {
+				   syncWithGoogleSheets();
+			   }
+		   }, 30000);
 		   
 		   // Simular notificación push (en una app real usarías la API de notificaciones)
 		   setTimeout(() => {
@@ -484,11 +668,6 @@
 				   console.log('[Notificación] Recordatorio: Hay tortillas pendientes de pagar');
 			   }
 		   }, 3000);
-		   
-		   // Registrar Service Worker para PWA (comentado hasta implementar)
-		   // if ('serviceWorker' in navigator) {
-		   //     navigator.serviceWorker.register('/sw.js');
-		   // }
 	   });
    </script>
 </body>
