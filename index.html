@@ -157,7 +157,7 @@
    </div>
  
    <script>
-	   // CONFIGURACIÓN - CAMBIA ESTA URL POR LA DE TU GOOGLE APPS SCRIPT
+	   // CONFIGURACIÓN - URL DE GOOGLE APPS SCRIPT
 	   const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby3Tx8W2Jw7aRSqSExYQPR_LZ9OwmvrgizdrIboZTZgWDCwoWMMg7jnBPkWwE_8JeDRKA/exec';
 	   
 	   // Variables globales
@@ -197,7 +197,7 @@
 
 	   // Funciones de Google Sheets
 	   async function syncWithGoogleSheets() {
-		   if (!isOnline || isSyncing || !GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL === 'TU_URL_DE_GOOGLE_SCRIPT_AQUI') {
+		   if (!isOnline || isSyncing || !GOOGLE_SCRIPT_URL) {
 			   return;
 		   }
 
@@ -205,6 +205,8 @@
 		   updateConnectionStatus();
 
 		   try {
+			   console.log('Sincronizando con Google Sheets...');
+			   
 			   // Cargar datos desde Google Sheets
 			   const [apuestasResponse, historialResponse] = await Promise.all([
 				   fetch(`${GOOGLE_SCRIPT_URL}?action=getApuestas`),
@@ -214,6 +216,8 @@
 			   if (apuestasResponse.ok && historialResponse.ok) {
 				   const apuestasData = await apuestasResponse.json();
 				   const historialData = await historialResponse.json();
+
+				   console.log('Datos recibidos de Google Sheets:', { apuestasData, historialData });
 
 				   // Procesar datos de Google Sheets
 				   apuestas = apuestasData.map(item => ({
@@ -243,19 +247,16 @@
 					   resultado: item.resultado || '',
 					   tortillas: parseInt(item.tortillas) || 0
 				   }));
-
-				   // Guardar en localStorage como backup
-				   guardarDatosLocal();
 				   
 				   // Actualizar interfaz
 				   renderApuestasActivas();
 				   renderHistorial();
 				   updateEstadisticas();
+			   } else {
+				   console.log('Error en respuesta de Google Sheets:', apuestasResponse.status, historialResponse.status);
 			   }
 		   } catch (error) {
 			   console.log('Error sincronizando con Google Sheets:', error);
-			   // Cargar desde localStorage si falla Google Sheets
-			   cargarDatosLocal();
 		   }
 
 		   isSyncing = false;
@@ -263,7 +264,7 @@
 	   }
 
 	   async function saveToGoogleSheets(action, data) {
-		   if (!isOnline || !GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL === 'TU_URL_DE_GOOGLE_SCRIPT_AQUI') {
+		   if (!isOnline || !GOOGLE_SCRIPT_URL) {
 			   return false;
 		   }
 
@@ -297,36 +298,6 @@
 		   }
 	   }
 
-	   // Funciones de localStorage (backup)
-	   function cargarDatosLocal() {
-		   const apuestasGuardadas = localStorage.getItem('tortillaBET_apuestas');
-		   const historialGuardado = localStorage.getItem('tortillaBET_historial');
-		   
-			   apuestas = JSON.parse(apuestasGuardadas);
-
-		   
-
-			   historial = JSON.parse(historialGuardado);
-		  
-	   }
-
-	   function guardarDatosLocal() {
-		   localStorage.setItem('tortillaBET_apuestas', JSON.stringify(apuestas));
-		   localStorage.setItem('tortillaBET_historial', JSON.stringify(historial));
-	   }
-
-	   // Función híbrida para guardar datos
-	   async function guardarDatos() {
-		   // Siempre guardar en localStorage
-		   guardarDatosLocal();
-		   
-		   // Intentar guardar en Google Sheets si hay conexión
-		   if (isOnline) {
-			   // Aquí podrías implementar lógica más sofisticada
-			   // para sincronizar cambios específicos
-		   }
-	   }
-
 	   // DOM Elements
 	   const tabActivas = document.getElementById('tab-activas');
 	   const tabNueva = document.getElementById('tab-nueva');
@@ -335,7 +306,6 @@
 	   const contenidoNueva = document.getElementById('contenido-nueva');
 	   const contenidoHistorial = document.getElementById('contenido-historial');
 	   const listaApuestas = document.getElementById('lista-apuestas');
-	   const historialBody = document.getElementById('historial-body');
 	   const formNuevaApuesta = document.getElementById('form-nueva-apuesta');
 	   const contadorApuestas = document.getElementById('contador-apuestas');
 	   const totalApuestas = document.getElementById('total-apuestas');
@@ -503,6 +473,11 @@
 	   formNuevaApuesta.addEventListener('submit', async function(e) {
 		   e.preventDefault();
 		   
+		   if (!isOnline) {
+			   alert('⚠️ Sin conexión a internet. No se puede crear la apuesta.');
+			   return;
+		   }
+		   
 		   const titulo = document.getElementById('titulo').value;
 		   const descripcion = document.getElementById('descripcion').value;
 		   
@@ -526,45 +501,54 @@
 			   tortillas: 0
 		   };
 		   
-		   apuestas.push(nuevaApuesta);
-		   
-		   // Guardar localmente y en Google Sheets
-		   await guardarDatos();
-		   if (isOnline) {
-			   await saveToGoogleSheets('addApuesta', nuevaApuesta);
+		   // Guardar en Google Sheets
+		   const success = await saveToGoogleSheets('addApuesta', nuevaApuesta);
+		   if (success) {
+			   // Recargar datos desde Google Sheets para mantener sincronización
+			   await syncWithGoogleSheets();
+			   
+			   // Reset form
+			   formNuevaApuesta.reset();
+			   
+			   // Switch to active bets tab and update
+			   tabActivas.click();
+			   
+			   // Notificación
+			   alert('¡Nueva apuesta creada! 🎉');
+		   } else {
+			   alert('❌ Error al crear la apuesta. Inténtalo de nuevo.');
 		   }
-		   
-		   // Reset form
-		   formNuevaApuesta.reset();
-		   
-		   // Switch to active bets tab and update
-		   tabActivas.click();
-		   renderApuestasActivas();
-		   
-		   // Notificación
-		   alert('¡Nueva apuesta creada! 🎉');
 	   });
  
 	   // Marcar como pagada
 	   async function marcarPagada(id) {
+		   if (!isOnline) {
+			   alert('⚠️ Sin conexión a internet. No se puede marcar como pagada.');
+			   return;
+		   }
+		   
 		   const apuesta = apuestas.find(a => a.id === id);
 		   if (!apuesta) return;
 		   
 		   if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
-			   apuestas = apuestas.filter(a => a.id !== id);
-			   
-			   // Guardar cambios
-			   await guardarDatos();
-			   if (isOnline) {
-				   await saveToGoogleSheets('deleteApuesta', { id });
+			   // Eliminar de Google Sheets
+			   const success = await saveToGoogleSheets('deleteApuesta', { id });
+			   if (success) {
+				   // Recargar datos desde Google Sheets
+				   await syncWithGoogleSheets();
+			   } else {
+				   alert('❌ Error al marcar como pagada. Inténtalo de nuevo.');
 			   }
-			   
-			   renderApuestasActivas();
 		   }
 	   }
  
 	   // Finalizar apuesta
 	   async function finalizarApuesta(id) {
+		   if (!isOnline) {
+			   alert('⚠️ Sin conexión a internet. No se puede finalizar la apuesta.');
+			   return;
+		   }
+		   
 		   const apuesta = apuestas.find(a => a.id === id);
 		   if (!apuesta) return;
 		   
@@ -583,52 +567,47 @@
 		   apuesta.tortillas = tortillas;
 		   apuesta.resultado = resultado || "";
 		   
-		   // Mantener en apuestas hasta que se marque como pagada
-		   historial.unshift({...apuesta});
+		   // Guardar cambios en Google Sheets
+		   const success1 = await saveToGoogleSheets('updateApuesta', apuesta);
+		   const success2 = await saveToGoogleSheets('moveToHistorial', apuesta);
 		   
-		   // Guardar cambios
-		   await guardarDatos();
-		   if (isOnline) {
-			   await saveToGoogleSheets('updateApuesta', apuesta);
-			   await saveToGoogleSheets('moveToHistorial', apuesta);
+		   if (success1 && success2) {
+			   // Recargar datos desde Google Sheets
+			   await syncWithGoogleSheets();
+			   
+			   // Notificación mejorada
+			   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
+			   
+			   // Notificar a todos los participantes
+			   apuesta.participantes.forEach(participante => {
+				   const esGanador = participante === ganador;
+				   const mensajeIndividual = esGanador 
+					   ? `🎉 ${mensaje}\n\n¡Disfruta tu premio!` 
+					   : `😅 ${mensaje}\n\n¡A pagar la apuesta!`;
+					   
+				   console.log(`Notificación para ${participante}: ${mensajeIndividual}`);
+			   });
+			   
+			   alert(mensaje);
+		   } else {
+			   alert('❌ Error al finalizar la apuesta. Inténtalo de nuevo.');
 		   }
-		   
-		   renderApuestasActivas();
-		   
-		   // Notificación mejorada
-		   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
-		   
-		   // Notificar a todos los participantes
-		   apuesta.participantes.forEach(participante => {
-			   const esGanador = participante === ganador;
-			   const mensajeIndividual = esGanador 
-				   ? `🎉 ${mensaje}\n\n¡Disfruta tu premio!` 
-				   : `😅 ${mensaje}\n\n¡A pagar la apuesta!`;
-				   
-			   console.log(`Notificación para ${participante}: ${mensajeIndividual}`);
-			   // En app real: enviar notificación push o email
-		   });
-		   
-		   alert(mensaje);
-		   
-		   // Mostrar el historial actualizado
-		   renderHistorial();
-		   updateEstadisticas();
 	   }
  
 	   // Initialize
 	   document.addEventListener('DOMContentLoaded', () => {
 		   updateConnectionStatus();
 		   
-		   // Intentar cargar desde Google Sheets primero
+		   // Cargar datos desde Google Sheets
 		   if (isOnline) {
 			   syncWithGoogleSheets();
 		   } else {
-			   // Si no hay conexión, cargar desde localStorage
-			   cargarDatosLocal();
-			   renderApuestasActivas();
-			   renderHistorial();
-			   updateEstadisticas();
+			   // Si no hay conexión, mostrar mensaje
+			   document.getElementById('lista-apuestas').innerHTML = `
+				   <div class="col-span-2 p-4 text-center tortilla-card">
+					   <p class="text-amber-700">⚠️ Sin conexión a internet. La aplicación requiere conexión para funcionar.</p>
+				   </div>
+			   `;
 		   }
 		   
 		   // Sincronizar cada 30 segundos si hay conexión
