@@ -168,7 +168,7 @@
  
    <script>
 	   // CONFIGURACIÓN - URL DE GOOGLE APPS SCRIPT
-	   const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwzYPZ0FUn_7pNRp6IBXE-hoTSSYLFsftIhJ2PbSEqxBqvKEGg3xXzw8SYAF664gyFnqg/exec';
+	   const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwzYPZ0FUn_7pNRp6IBXE-hoTSSYLFsftIhJ2PbSEqxBqvKEGg3xXzw8SAYAF664gyFnqg/exec';
 	   
 	   // Variables globales
 	   let apuestas = [];
@@ -578,7 +578,7 @@
 		   const titulo = document.getElementById('titulo').value;
 		   const descripcion = document.getElementById('descripcion').value;
 		   
-		   const participantes = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
+		   const participantes = Array.from(document.querySelectorAll('#lista-participantes input[type="checkbox"]:checked'))
 			   .map(el => el.value);
 		   
 		   if (participantes.length < 2) {
@@ -721,6 +721,3 @@
 			   }
 		   }, 3000);
 	   });
-   </script>
-</body>
-</html>
