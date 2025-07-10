@@ -220,7 +220,7 @@
 				   console.log('Datos recibidos de Google Sheets:', { apuestasData, historialData });
 
 				   // Procesar datos de Google Sheets
-				   apuestas = apuestasData.map(item => ({
+				   apuestas = apuestasData.length > 0 ? apuestasData.map(item => ({
 					   id: parseInt(item.id) || 0,
 					   titulo: item.titulo || '',
 					   descripcion: item.descripcion || '',
@@ -232,9 +232,9 @@
 					   ganador: item.ganador || null,
 					   resultado: item.resultado || '',
 					   tortillas: parseInt(item.tortillas) || 0
-				   }));
+				   })) : [];
 
-				   historial = historialData.map(item => ({
+				   historial = historialData.length > 0 ? historialData.map(item => ({
 					   id: parseInt(item.id) || 0,
 					   titulo: item.titulo || '',
 					   descripcion: item.descripcion || '',
@@ -246,7 +246,7 @@
 					   ganador: item.ganador || '',
 					   resultado: item.resultado || '',
 					   tortillas: parseInt(item.tortillas) || 0
-				   }));
+				   })) : [];
 				   
 				   // Actualizar interfaz
 				   renderApuestasActivas();
