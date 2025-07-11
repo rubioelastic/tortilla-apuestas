@@ -227,6 +227,25 @@
 		   updateConnectionStatus();
 	   }
 
+	   // Función para verificar si Firebase está configurado
+	   function isFirebaseConfigured() {
+		   return window.db && 
+			      window.firestore && 
+			      window.db._delegate &&
+			      window.db._delegate._databaseId &&
+			      window.db._delegate._databaseId.projectId !== 'demo-project';
+	   }
+
+	   // Función para ocultar modal si Firebase está configurado
+	   function checkFirebaseAndHideModal() {
+		   if (isFirebaseConfigured()) {
+			   document.getElementById('config-message').style.display = 'none';
+			   isConnected = true;
+			   loadDemoData(); // Cargar datos iniciales
+			   updateConnectionStatus();
+		   }
+	   }
+
 	   // Cargar datos de ejemplo
 	   function loadDemoData() {
 		   apuestas = [
@@ -622,13 +641,19 @@
 	   updateEstadisticas();
    }
 
-   // Initialize
-   document.addEventListener('DOMContentLoaded', () => {
-	   console.log('DOM cargado, inicializando aplicación...');
-	   
-	   initializeTabs();
-	   updateConnectionStatus();
-   });
+	   // Initialize
+	   document.addEventListener('DOMContentLoaded', () => {
+		   console.log('DOM cargado, inicializando aplicación...');
+		   
+		   initializeTabs();
+		   
+		   // Verificar si Firebase está configurado después de un breve delay
+		   setTimeout(() => {
+			   checkFirebaseAndHideModal();
+		   }, 1000);
+		   
+		   updateConnectionStatus();
+	   });
    </script>
 </body>
 </html>

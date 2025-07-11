@@ -73,18 +73,24 @@ const firebaseConfig = {
 };
 ```
 
-## Paso 5: Configurar Reglas de Seguridad
+## Paso 5: Configurar Reglas de Seguridad PERMANENTES
 
 1. En Firebase Console, ve a **"Firestore Database"**
 2. Haz clic en la pestaña **"Reglas"**
-3. Reemplaza las reglas con esto:
+3. Reemplaza las reglas con esto (NUNCA EXPIRAN):
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permitir lectura y escritura a todos por ahora
-    match /{document=**} {
+    // Reglas permanentes para TortillApuestas
+    match /apuestas/{document} {
+      allow read, write: if true;
+    }
+    match /historial/{document} {
+      allow read, write: if true;
+    }
+    match /participantes/{document} {
       allow read, write: if true;
     }
   }
@@ -93,7 +99,8 @@ service cloud.firestore {
 
 4. Haz clic en **"Publicar"**
 
-⚠️ **Nota de Seguridad:** Estas reglas permiten acceso completo. Para producción, deberías implementar autenticación.
+✅ **Estas reglas NUNCA expiran** - No necesitas renovarlas cada 30 días
+⚠️ **Nota:** Solo permiten acceso a las colecciones de la app (más seguro que acceso total)
 
 ## Paso 6: ¡Probar la Aplicación!
 
