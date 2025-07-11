@@ -6,6 +6,31 @@
    <title>TortillApuestas | La app de apuestas entre amigos</title>
    <script src="https://cdn.tailwindcss.com"></script>
    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+   
+   <!-- Firebase SDK -->
+   <script type="module">
+     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+     import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+     
+     // Configuración de Firebase (usando base de datos demo)
+		const firebaseConfig = {
+			apiKey: "AIzaSyAAKPn-I5ypYOxDzFfD5nWQ87n3_WJJ4TA",
+			authDomain: "tortilla-apuestas.firebaseapp.com",
+			projectId: "tortilla-apuestas",
+			storageBucket: "tortilla-apuestas.firebasestorage.app",
+			messagingSenderId: "790007868199",
+			appId: "1:790007868199:web:02e490a886dc37554a1702"
+		};
+     
+     // Inicializar Firebase
+     const app = initializeApp(firebaseConfig);
+     const db = getFirestore(app);
+     
+     // Hacer disponible globalmente
+     window.db = db;
+     window.firestore = { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot };
+   </script>
+   
    <style>
 	   .tortilla-bg {
 		   background-color: #fef3c7;
@@ -41,13 +66,15 @@
 		   font-size: 12px;
 		   z-index: 1000;
 	   }
-	   .memory { background-color: #06b6d4; color: white; }
+	   .cloud { background-color: #10b981; color: white; }
+	   .offline { background-color: #ef4444; color: white; }
+	   .syncing { background-color: #f59e0b; color: white; }
    </style>
 </head>
 <body class="tortilla-bg min-h-screen">
    <!-- Indicador de estado -->
-   <div id="status-indicator" class="status-indicator memory">
-	   <i class="fas fa-memory"></i> <span id="status-text">Memoria</span>
+   <div id="status-indicator" class="status-indicator offline">
+	   <i class="fas fa-cloud"></i> <span id="status-text">Conectando...</span>
    </div>
 
    <div class="container mx-auto px-4 py-8 max-w-4xl">
@@ -163,37 +190,90 @@
 		   </div>
 	   </main>
    </div>
+
+   <!-- Mensaje de configuración -->
+   <div id="config-message" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+	   <div class="bg-white p-6 rounded-lg max-w-md mx-4">
+		   <h3 class="text-lg font-bold text-amber-800 mb-4">🔧 Configuración Requerida</h3>
+		   <p class="text-gray-700 mb-4">Para que la aplicación funcione con datos compartidos entre dispositivos, necesitas configurar Firebase:</p>
+		   <ol class="list-decimal list-inside text-sm text-gray-600 mb-4 space-y-1">
+			   <li>Crear proyecto en <a href="https://console.firebase.google.com" target="_blank" class="text-blue-600 underline">Firebase Console</a></li>
+			   <li>Habilitar Firestore Database</li>
+			   <li>Reemplazar la configuración demo en el código</li>
+		   </ol>
+		   <div class="flex gap-2">
+			   <button onclick="closeConfigMessage()" class="flex-1 bg-amber-500 text-white px-4 py-2 rounded hover:bg-amber-600">
+				   Usar modo demo
+			   </button>
+			   <a href="https://console.firebase.google.com" target="_blank" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-center">
+				   Configurar Firebase
+			   </a>
+		   </div>
+	   </div>
+   </div>
  
    <script>
-	   // Variables globales - Solo en memoria (se reinician al recargar)
-	   let apuestas = [
-		   {
-			   id: 1,
-			   titulo: "¿Lloverá el fin de semana?",
-			   descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
-			   participantes: ["Javi", "RaulG", "Paula"],
-			   fecha: "2024-12-15",
-			   estado: "activa",
-			   ganador: null,
-			   resultado: ""
-		   }
-	   ];
-	   
-	   let historial = [
-		   {
-			   id: 2,
-			   titulo: "Quién llega tarde",
-			   descripcion: "Javi llegará más de 15 minutos tarde a la cena",
-			   participantes: ["Javi", "RaulG", "Paula", "David"],
-			   fecha: "2024-12-01",
-			   estado: "finalizada",
-			   ganador: "RaulG",
-			   tortillas: 1,
-			   resultado: "Javi llegó 20 minutos tarde"
-		   }
-	   ];
-	   
+	   // Variables globales
+	   let apuestas = [];
+	   let historial = [];
 	   let participanteCounter = 4;
+	   let isConnected = false;
+
+	   // Función para cerrar mensaje de configuración
+	   function closeConfigMessage() {
+		   document.getElementById('config-message').style.display = 'none';
+		   // Usar datos de ejemplo en modo demo
+		   loadDemoData();
+		   updateConnectionStatus();
+	   }
+
+	   // Cargar datos de ejemplo
+	   function loadDemoData() {
+		   apuestas = [
+			   {
+				   id: 1,
+				   titulo: "¿Lloverá el fin de semana?",
+				   descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
+				   participantes: ["Javi", "RaulG", "Paula"],
+				   fecha: "2024-12-15",
+				   estado: "activa",
+				   ganador: null,
+				   resultado: ""
+			   }
+		   ];
+		   
+		   historial = [
+			   {
+				   id: 2,
+				   titulo: "Quién llega tarde",
+				   descripcion: "Javi llegará más de 15 minutos tarde a la cena",
+				   participantes: ["Javi", "RaulG", "Paula", "David"],
+				   fecha: "2024-12-01",
+				   estado: "finalizada",
+				   ganador: "RaulG",
+				   tortillas: 1,
+				   resultado: "Javi llegó 20 minutos tarde"
+			   }
+		   ];
+		   
+		   renderApuestasActivas();
+		   renderHistorial();
+		   updateEstadisticas();
+	   }
+
+	   // Funciones de conectividad
+	   function updateConnectionStatus() {
+		   const indicator = document.getElementById('status-indicator');
+		   const statusText = document.getElementById('status-text');
+		   
+		   if (isConnected) {
+			   indicator.className = 'status-indicator cloud';
+			   statusText.innerHTML = '<i class="fas fa-cloud"></i> Sincronizado';
+		   } else {
+			   indicator.className = 'status-indicator offline';
+			   statusText.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Modo Demo';
+		   }
+	   }
 
 	   // DOM Elements
 	   const tabActivas = document.getElementById('tab-activas');
@@ -482,75 +562,73 @@
 				   resultado: ""
 			   };
 			   
-			   apuestas.push(nuevaApuesta);
-			   
-			   // Reset form
-			   formNuevaApuesta.reset();
-			   
-			   // Switch to active bets tab and update
-			   if (tabActivas) {
-				   tabActivas.click();
-			   }
-			   
-			   alert('¡Nueva apuesta creada! 🎉');
-		   });
-	   }
- 
-	   // Marcar como pagada
-	   function marcarPagada(id) {
-		   const apuesta = apuestas.find(a => a.id === id);
-		   if (!apuesta) return;
+		   apuestas.push(nuevaApuesta);
 		   
-		   if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
-			   apuestas = apuestas.filter(a => a.id !== id);
-			   renderApuestasActivas();
-		   }
-	   }
- 
-	   // Finalizar apuesta
-	   function finalizarApuesta(id) {
-		   const apuesta = apuestas.find(a => a.id === id);
-		   if (!apuesta) return;
+		   // Reset form
+		   formNuevaApuesta.reset();
 		   
-		   const ganador = prompt(`Introduce el ganador de "${apuesta.titulo}":`, apuesta.participantes[0]);
-		   if (!ganador || !apuesta.participantes.includes(ganador)) {
-			   alert('Por favor, introduce un participante válido');
-			   return;
+		   // Switch to active bets tab and update
+		   if (tabActivas) {
+			   tabActivas.click();
 		   }
 		   
-		   const resultado = prompt(`Introduce el resultado de "${apuesta.titulo}":`, "Detalles del resultado");
-		   const tortillas = parseInt(prompt('¿Cuántas tortillas se deben?', '1')) || 1;
-		   
-		   // Actualizar apuesta
-		   apuesta.estado = 'finalizada';
-		   apuesta.ganador = ganador;
-		   apuesta.tortillas = tortillas;
-		   apuesta.resultado = resultado || "";
-		   
-		   // Mover a historial
-		   historial.unshift({...apuesta});
-		   
-		   renderApuestasActivas();
-		   
-		   // Notificación mejorada
-		   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
-		   
-		   alert(mensaje);
-		   
-		   // Mostrar el historial actualizado
-		   renderHistorial();
-		   updateEstadisticas();
-	   }
- 
-	   // Initialize
-	   document.addEventListener('DOMContentLoaded', () => {
-		   console.log('DOM cargado, inicializando aplicación...');
-		   
-		   initializeTabs();
-		   renderApuestasActivas();
-		   renderHistorial();
-		   updateEstadisticas();
+		   alert('¡Nueva apuesta creada! 🎉');
 	   });
+   }
+
+   // Marcar como pagada
+   function marcarPagada(id) {
+	   const apuesta = apuestas.find(a => a.id === id);
+	   if (!apuesta) return;
+	   
+	   if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
+		   apuestas = apuestas.filter(a => a.id !== id);
+		   renderApuestasActivas();
+	   }
+   }
+
+   // Finalizar apuesta
+   function finalizarApuesta(id) {
+	   const apuesta = apuestas.find(a => a.id === id);
+	   if (!apuesta) return;
+	   
+	   const ganador = prompt(`Introduce el ganador de "${apuesta.titulo}":`, apuesta.participantes[0]);
+	   if (!ganador || !apuesta.participantes.includes(ganador)) {
+		   alert('Por favor, introduce un participante válido');
+		   return;
+	   }
+	   
+	   const resultado = prompt(`Introduce el resultado de "${apuesta.titulo}":`, "Detalles del resultado");
+	   const tortillas = parseInt(prompt('¿Cuántas tortillas se deben?', '1')) || 1;
+	   
+	   // Actualizar apuesta
+	   apuesta.estado = 'finalizada';
+	   apuesta.ganador = ganador;
+	   apuesta.tortillas = tortillas;
+	   apuesta.resultado = resultado || "";
+	   
+	   // Mover a historial
+	   historial.unshift({...apuesta});
+	   
+	   renderApuestasActivas();
+	   
+	   // Notificación mejorada
+	   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
+	   
+	   alert(mensaje);
+	   
+	   // Mostrar el historial actualizado
+	   renderHistorial();
+	   updateEstadisticas();
+   }
+
+   // Initialize
+   document.addEventListener('DOMContentLoaded', () => {
+	   console.log('DOM cargado, inicializando aplicación...');
+	   
+	   initializeTabs();
+	   updateConnectionStatus();
+   });
    </script>
 </body>
 </html>
