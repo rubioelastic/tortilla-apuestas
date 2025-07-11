@@ -199,8 +199,82 @@
 	   let participanteCounter = 4;
 	   let isConnected = true; // Firebase está configurado
 
-	   // Cargar datos de ejemplo
-	   function loadDemoData() {
+	   // Funciones Firebase para guardar/cargar datos
+	   async function cargarDatosFirebase() {
+		   try {
+			   console.log('Cargando datos desde Firebase...');
+			   
+			   // Cargar apuestas
+			   const apuestasSnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'apuestas'));
+			   apuestas = [];
+			   apuestasSnapshot.forEach((doc) => {
+				   apuestas.push({ id: doc.id, ...doc.data() });
+			   });
+			   
+			   // Cargar historial
+			   const historialSnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'historial'));
+			   historial = [];
+			   historialSnapshot.forEach((doc) => {
+				   historial.push({ id: doc.id, ...doc.data() });
+			   });
+			   
+			   console.log('Datos cargados:', { apuestas: apuestas.length, historial: historial.length });
+			   
+			   // Si no hay datos, cargar datos de ejemplo
+			   if (apuestas.length === 0 && historial.length === 0) {
+				   await cargarDatosEjemplo();
+			   }
+			   
+		   } catch (error) {
+			   console.error('Error cargando datos de Firebase:', error);
+			   // Cargar datos de ejemplo si hay error
+			   loadDemoDataLocal();
+		   }
+		   
+		   renderApuestasActivas();
+		   renderHistorial();
+		   updateEstadisticas();
+	   }
+
+	   async function cargarDatosEjemplo() {
+		   console.log('Cargando datos de ejemplo en Firebase...');
+		   
+		   // Añadir apuesta de ejemplo
+		   const apuestaEjemplo = {
+			   titulo: "¿Lloverá el fin de semana?",
+			   descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
+			   participantes: ["Javi", "RaulG", "Paula"],
+			   fecha: "2024-12-15",
+			   estado: "activa",
+			   ganador: null,
+			   resultado: ""
+		   };
+		   
+		   const historialEjemplo = {
+			   titulo: "Quién llega tarde",
+			   descripcion: "Javi llegará más de 15 minutos tarde a la cena",
+			   participantes: ["Javi", "RaulG", "Paula", "David"],
+			   fecha: "2024-12-01",
+			   estado: "finalizada",
+			   ganador: "RaulG",
+			   tortillas: 1,
+			   resultado: "Javi llegó 20 minutos tarde"
+		   };
+		   
+		   try {
+			   await window.firestore.addDoc(window.firestore.collection(window.db, 'apuestas'), apuestaEjemplo);
+			   await window.firestore.addDoc(window.firestore.collection(window.db, 'historial'), historialEjemplo);
+			   console.log('Datos de ejemplo guardados en Firebase');
+			   
+			   // Recargar datos
+			   await cargarDatosFirebase();
+		   } catch (error) {
+			   console.error('Error guardando datos de ejemplo:', error);
+		   }
+	   }
+
+	   // Datos locales como fallback
+	   function loadDemoDataLocal() {
 		   apuestas = [
 			   {
 				   id: 1,
@@ -227,10 +301,54 @@
 				   resultado: "Javi llegó 20 minutos tarde"
 			   }
 		   ];
-		   
-		   renderApuestasActivas();
-		   renderHistorial();
-		   updateEstadisticas();
+	   }
+
+	   // Guardar apuesta en Firebase
+	   async function guardarApuestaFirebase(apuesta) {
+		   try {
+			   await window.firestore.addDoc(window.firestore.collection(window.db, 'apuestas'), apuesta);
+			   console.log('Apuesta guardada en Firebase');
+			   return true;
+		   } catch (error) {
+			   console.error('Error guardando apuesta:', error);
+			   return false;
+		   }
+	   }
+
+	   // Actualizar apuesta en Firebase
+	   async function actualizarApuestaFirebase(id, datos) {
+		   try {
+			   await window.firestore.updateDoc(window.firestore.doc(window.db, 'apuestas', id), datos);
+			   console.log('Apuesta actualizada en Firebase');
+			   return true;
+		   } catch (error) {
+			   console.error('Error actualizando apuesta:', error);
+			   return false;
+		   }
+	   }
+
+	   // Eliminar apuesta de Firebase
+	   async function eliminarApuestaFirebase(id) {
+		   try {
+			   await window.firestore.deleteDoc(window.firestore.doc(window.db, 'apuestas', id));
+			   console.log('Apuesta eliminada de Firebase');
+			   return true;
+		   } catch (error) {
+			   console.error('Error eliminando apuesta:', error);
+			   return false;
+		   }
+	   }
+
+	   // Guardar en historial Firebase
+	   async function guardarHistorialFirebase(apuesta) {
+		   try {
+			   await window.firestore.addDoc(window.firestore.collection(window.db, 'historial'), apuesta);
+			   console.log('Historial guardado en Firebase');
+			   return true;
+		   } catch (error) {
+			   console.error('Error guardando historial:', error);
+			   return false;
+		   }
 	   }
 
 	   // DOM Elements
@@ -495,7 +613,7 @@
 	   
 	   // Event listeners para formulario
 	   if (formNuevaApuesta) {
-		   formNuevaApuesta.addEventListener('submit', function(e) {
+		   formNuevaApuesta.addEventListener('submit', async function(e) {
 			   e.preventDefault();
 			   
 			   const titulo = document.getElementById('titulo').value;
@@ -510,7 +628,6 @@
 			   }
 			   
 			   const nuevaApuesta = {
-				   id: apuestas.length > 0 ? Math.max(...apuestas.map(a => a.id), 0) + 1 : 1,
 				   titulo,
 				   descripcion,
 				   participantes,
@@ -520,73 +637,104 @@
 				   resultado: ""
 			   };
 			   
-		   apuestas.push(nuevaApuesta);
+			   // Guardar en Firebase
+			   const guardado = await guardarApuestaFirebase(nuevaApuesta);
+			   
+			   if (guardado) {
+				   // Recargar datos desde Firebase
+				   await cargarDatosFirebase();
+				   
+				   // Reset form
+				   formNuevaApuesta.reset();
+				   
+				   // Switch to active bets tab and update
+				   if (tabActivas) {
+					   tabActivas.click();
+				   }
+				   
+				   alert('¡Nueva apuesta creada y guardada! 🎉');
+			   } else {
+				   alert('Error guardando la apuesta. Inténtalo de nuevo.');
+			   }
+		   });
+	   }
+
+	   // Marcar como pagada
+	   async function marcarPagada(id) {
+		   const apuesta = apuestas.find(a => a.id === id);
+		   if (!apuesta) return;
 		   
-		   // Reset form
-		   formNuevaApuesta.reset();
+		   if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
+			   // Eliminar de Firebase
+			   const eliminado = await eliminarApuestaFirebase(id);
+			   
+			   if (eliminado) {
+				   // Recargar datos
+				   await cargarDatosFirebase();
+				   alert('¡Apuesta marcada como pagada! 💰');
+			   } else {
+				   alert('Error eliminando la apuesta. Inténtalo de nuevo.');
+			   }
+		   }
+	   }
+
+	   // Finalizar apuesta
+	   async function finalizarApuesta(id) {
+		   const apuesta = apuestas.find(a => a.id === id);
+		   if (!apuesta) return;
 		   
-		   // Switch to active bets tab and update
-		   if (tabActivas) {
-			   tabActivas.click();
+		   const ganador = prompt(`Introduce el ganador de "${apuesta.titulo}":`, apuesta.participantes[0]);
+		   if (!ganador || !apuesta.participantes.includes(ganador)) {
+			   alert('Por favor, introduce un participante válido');
+			   return;
 		   }
 		   
-		   alert('¡Nueva apuesta creada! 🎉');
+		   const resultado = prompt(`Introduce el resultado de "${apuesta.titulo}":`, "Detalles del resultado");
+		   const tortillas = parseInt(prompt('¿Cuántas tortillas se deben?', '1')) || 1;
+		   
+		   // Crear objeto para historial
+		   const apuestaFinalizada = {
+			   titulo: apuesta.titulo,
+			   descripcion: apuesta.descripcion,
+			   participantes: apuesta.participantes,
+			   fecha: apuesta.fecha,
+			   estado: 'finalizada',
+			   ganador: ganador,
+			   tortillas: tortillas,
+			   resultado: resultado || ""
+		   };
+		   
+		   // Guardar en historial Firebase
+		   const guardadoHistorial = await guardarHistorialFirebase(apuestaFinalizada);
+		   
+		   // Actualizar estado en apuestas Firebase
+		   const actualizado = await actualizarApuestaFirebase(id, {
+			   estado: 'finalizada',
+			   ganador: ganador,
+			   tortillas: tortillas,
+			   resultado: resultado || ""
+		   });
+		   
+		   if (guardadoHistorial && actualizado) {
+			   // Recargar datos
+			   await cargarDatosFirebase();
+			   
+			   // Notificación mejorada
+			   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
+			   
+			   alert(mensaje);
+		   } else {
+			   alert('Error finalizando la apuesta. Inténtalo de nuevo.');
+		   }
+	   }
+
+	   // Initialize
+	   document.addEventListener('DOMContentLoaded', () => {
+		   console.log('DOM cargado, inicializando aplicación...');
+		   
+		   initializeTabs();
+		   cargarDatosFirebase(); // Cargar datos desde Firebase
 	   });
-   }
-
-   // Marcar como pagada
-   function marcarPagada(id) {
-	   const apuesta = apuestas.find(a => a.id === id);
-	   if (!apuesta) return;
-	   
-	   if (confirm(`¿Confirmas que la apuesta "${apuesta.titulo}" ha sido pagada?`)) {
-		   apuestas = apuestas.filter(a => a.id !== id);
-		   renderApuestasActivas();
-	   }
-   }
-
-   // Finalizar apuesta
-   function finalizarApuesta(id) {
-	   const apuesta = apuestas.find(a => a.id === id);
-	   if (!apuesta) return;
-	   
-	   const ganador = prompt(`Introduce el ganador de "${apuesta.titulo}":`, apuesta.participantes[0]);
-	   if (!ganador || !apuesta.participantes.includes(ganador)) {
-		   alert('Por favor, introduce un participante válido');
-		   return;
-	   }
-	   
-	   const resultado = prompt(`Introduce el resultado de "${apuesta.titulo}":`, "Detalles del resultado");
-	   const tortillas = parseInt(prompt('¿Cuántas tortillas se deben?', '1')) || 1;
-	   
-	   // Actualizar apuesta
-	   apuesta.estado = 'finalizada';
-	   apuesta.ganador = ganador;
-	   apuesta.tortillas = tortillas;
-	   apuesta.resultado = resultado || "";
-	   
-	   // Mover a historial
-	   historial.unshift({...apuesta});
-	   
-	   renderApuestasActivas();
-	   
-	   // Notificación mejorada
-	   const mensaje = `${ganador} ganó '${apuesta.titulo}'!\n\n🏆 Premio: ${tortillas} tortilla(s)!\n📅 Fecha tope: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n📍 Lugar: Quedada en casa del perdedor`;
-	   
-	   alert(mensaje);
-	   
-	   // Mostrar el historial actualizado
-	   renderHistorial();
-	   updateEstadisticas();
-   }
-
-   // Initialize
-   document.addEventListener('DOMContentLoaded', () => {
-	   console.log('DOM cargado, inicializando aplicación...');
-	   
-	   initializeTabs();
-	   loadDemoData(); // Cargar datos iniciales
-   });
    </script>
 </body>
 </html>
