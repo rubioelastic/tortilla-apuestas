@@ -239,28 +239,6 @@
 	   async function cargarDatosEjemplo() {
 		   console.log('Cargando datos de ejemplo en Firebase...');
 		   
-		   // Añadir apuesta de ejemplo
-		   const apuestaEjemplo = {
-			   titulo: "¿Lloverá el fin de semana?",
-			   descripcion: "Apostamos a que no lloverá durante el finde en Madrid",
-			   participantes: ["Javi", "RaulG", "Paula"],
-			   fecha: "2024-12-15",
-			   estado: "activa",
-			   ganador: null,
-			   resultado: ""
-		   };
-		   
-		   const historialEjemplo = {
-			   titulo: "Quién llega tarde",
-			   descripcion: "Javi llegará más de 15 minutos tarde a la cena",
-			   participantes: ["Javi", "RaulG", "Paula", "David"],
-			   fecha: "2024-12-01",
-			   estado: "finalizada",
-			   ganador: "RaulG",
-			   tortillas: 1,
-			   resultado: "Javi llegó 20 minutos tarde"
-		   };
-		   
 		   try {
 			   await window.firestore.addDoc(window.firestore.collection(window.db, 'apuestas'), apuestaEjemplo);
 			   await window.firestore.addDoc(window.firestore.collection(window.db, 'historial'), historialEjemplo);
