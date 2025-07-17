@@ -171,9 +171,14 @@
 			   </div>
 			   
 			   <div class="flex justify-between items-center pt-4 border-t">
-				   <div class="text-xs text-gray-500">
-					   <i class="fas fa-cloud mr-1"></i>
-					   Sincronizado con Firebase
+				   <div class="flex items-center space-x-4">
+					   <div class="text-xs text-gray-500">
+						   <i class="fas fa-cloud mr-1"></i>
+						   Sincronizado con Firebase
+					   </div>
+					   <button id="change-pin-btn" class="text-xs text-blue-600 hover:text-blue-800 underline" title="Cambiar PIN de administrador">
+						   <i class="fas fa-key mr-1"></i> Cambiar PIN
+					   </button>
 				   </div>
 				   <div class="flex space-x-2">
 					   <button id="cancel-whatsapp-config" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancelar</button>
@@ -295,7 +300,8 @@
 		   enabled: false,
 		   phoneNumbers: [],
 		   notifyNewBet: true,
-		   notifyFinishedBet: true
+		   notifyFinishedBet: true,
+		   adminPin: null // PIN de administrador
 	   };
 
 	   // Cargar configuración WhatsApp desde Firebase
@@ -831,8 +837,11 @@ ${window.location.href}`;
 
 		   // Abrir modal
 		   btnConfig.addEventListener('click', async () => {
-			   modal.style.display = 'block';
-			   await loadConfigToModal();
+			   // Verificar PIN antes de abrir modal
+			   if (await verifyAdminAccess()) {
+				   modal.style.display = 'block';
+				   await loadConfigToModal();
+			   }
 		   });
 
 		   // Cerrar modal
@@ -875,6 +884,10 @@ ${window.location.href}`;
 				   }
 			   });
 		   });
+
+		   // Cambiar PIN
+		   const changePinBtn = document.getElementById('change-pin-btn');
+		   changePinBtn.addEventListener('click', changeAdminPin);
 
 		   // Guardar configuración
 		   saveConfig.addEventListener('click', async () => {
@@ -1108,6 +1121,94 @@ ${window.location.href}`;
 				   console.error('Error eliminando participante:', error);
 				   alert('❌ Error eliminando el participante');
 			   }
+		   }
+	   }
+
+	   // Funciones de seguridad con PIN
+	   async function verifyAdminAccess() {
+		   // Si no hay PIN configurado, configurar uno la primera vez
+		   if (!whatsappConfig.adminPin) {
+			   return await setupAdminPin();
+		   }
+		   
+		   // Verificar PIN existente
+		   const inputPin = prompt('🔒 Introduce el PIN de administrador para acceder a la configuración:');
+		   if (!inputPin) {
+			   return false; // Usuario canceló
+		   }
+		   
+		   if (inputPin === whatsappConfig.adminPin) {
+			   return true;
+		   } else {
+			   alert('❌ PIN incorrecto. Acceso denegado.');
+			   return false;
+		   }
+	   }
+
+	   async function setupAdminPin() {
+		   const newPin = prompt('🔐 Configura un PIN de administrador (4-6 dígitos) para proteger la gestión de contactos:');
+		   
+		   if (!newPin) {
+			   alert('⚠️ Se requiere un PIN para acceder a la configuración.');
+			   return false;
+		   }
+		   
+		   // Validar PIN
+		   if (!/^\d{4,6}$/.test(newPin)) {
+			   alert('❌ El PIN debe tener entre 4 y 6 dígitos.');
+			   return await setupAdminPin(); // Reintentar
+		   }
+		   
+		   // Confirmar PIN
+		   const confirmPin = prompt('🔐 Confirma el PIN:');
+		   if (newPin !== confirmPin) {
+			   alert('❌ Los PINs no coinciden. Inténtalo de nuevo.');
+			   return await setupAdminPin(); // Reintentar
+		   }
+		   
+		   // Guardar PIN
+		   whatsappConfig.adminPin = newPin;
+		   const saved = await saveWhatsAppConfig();
+		   
+		   if (saved) {
+			   alert('✅ PIN de administrador configurado correctamente.\n\n⚠️ IMPORTANTE: Recuerda este PIN, lo necesitarás para gestionar contactos.');
+			   return true;
+		   } else {
+			   alert('❌ Error guardando el PIN. Inténtalo de nuevo.');
+			   return false;
+		   }
+	   }
+
+	   async function changeAdminPin() {
+		   // Verificar PIN actual
+		   const currentPin = prompt('🔒 Introduce el PIN actual:');
+		   if (!currentPin || currentPin !== whatsappConfig.adminPin) {
+			   alert('❌ PIN actual incorrecto.');
+			   return;
+		   }
+		   
+		   // Configurar nuevo PIN
+		   const newPin = prompt('🔐 Introduce el nuevo PIN (4-6 dígitos):');
+		   if (!newPin || !/^\d{4,6}$/.test(newPin)) {
+			   alert('❌ El PIN debe tener entre 4 y 6 dígitos.');
+			   return;
+		   }
+		   
+		   // Confirmar nuevo PIN
+		   const confirmPin = prompt('🔐 Confirma el nuevo PIN:');
+		   if (newPin !== confirmPin) {
+			   alert('❌ Los PINs no coinciden.');
+			   return;
+		   }
+		   
+		   // Guardar nuevo PIN
+		   whatsappConfig.adminPin = newPin;
+		   const saved = await saveWhatsAppConfig();
+		   
+		   if (saved) {
+			   alert('✅ PIN cambiado correctamente.');
+		   } else {
+			   alert('❌ Error guardando el nuevo PIN.');
 		   }
 	   }
 	   
