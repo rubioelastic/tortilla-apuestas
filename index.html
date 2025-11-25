@@ -4,6 +4,16 @@
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
    <title>TortillApuestas | La app de apuestas entre amigos</title>
+   
+   <!-- PWA Meta Tags -->
+   <meta name="description" content="La app de apuestas entre amigos - ¡Donde las apuestas se pagan con tortilla!">
+   <meta name="theme-color" content="#f59e0b">
+   <link rel="manifest" href="manifest.json">
+   <link rel="apple-touch-icon" href="ConTortilla.png">
+   <meta name="apple-mobile-web-app-capable" content="yes">
+   <meta name="apple-mobile-web-app-status-bar-style" content="default">
+   <meta name="apple-mobile-web-app-title" content="Tortilla">
+   
    <script src="https://cdn.tailwindcss.com"></script>
    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
    
@@ -333,6 +343,19 @@
    </div>
  
    <script>
+	   // Registrar Service Worker para PWA
+	   if ('serviceWorker' in navigator) {
+		   window.addEventListener('load', () => {
+			   navigator.serviceWorker.register('/tortilla-apuestas/sw.js')
+				   .then((registration) => {
+					   console.log('✅ Service Worker registrado:', registration.scope);
+				   })
+				   .catch((error) => {
+					   console.error('❌ Error registrando Service Worker:', error);
+				   });
+		   });
+	   }
+
 	   // Variables globales
 	   let apuestas = [];
 	   let historial = [];

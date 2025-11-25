@@ -1,0 +1,21 @@
+{
+  "name": "TortillApuestas",
+  "short_name": "Tortilla",
+  "description": "La app de apuestas entre amigos - ¡Donde las apuestas se pagan con tortilla!",
+  "start_url": "/tortilla-apuestas/",
+  "scope": "/tortilla-apuestas/",
+  "display": "standalone",
+  "background_color": "#fef3c7",
+  "theme_color": "#f59e0b",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "ConTortilla.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["entertainment", "social"],
+  "lang": "es-ES"
+}
