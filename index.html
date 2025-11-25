@@ -22,6 +22,7 @@
      import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
      import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
      import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+     import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
      
      // Configuración de Firebase REAL (ya configurado)
      const firebaseConfig = {
@@ -37,6 +38,7 @@
      const app = initializeApp(firebaseConfig);
      const db = getFirestore(app);
      const auth = getAuth(app);
+     const storage = getStorage(app);
      
      // Autenticación anónima automática
      let authInitialized = false;
@@ -73,6 +75,8 @@
      // Hacer disponible globalmente
      window.db = db;
      window.auth = auth;
+     window.storage = storage;
+     window.firebaseStorage = { ref, uploadBytes, getDownloadURL };
      window.firestore = { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot };
      window.isFirebaseReal = true; // Marcar que Firebase está configurado
      window.waitForAuth = () => {
@@ -139,6 +143,34 @@
 		   background: rgba(0,0,0,0.5);
 		   z-index: 2000;
 		   display: none;
+	   }
+	   .photo-modal {
+		   position: fixed;
+		   top: 0;
+		   left: 0;
+		   width: 100%;
+		   height: 100%;
+		   background: rgba(0,0,0,0.9);
+		   z-index: 3000;
+		   display: none;
+		   align-items: center;
+		   justify-content: center;
+	   }
+	   .photo-modal img {
+		   max-width: 90%;
+		   max-height: 90vh;
+		   border-radius: 8px;
+	   }
+	   .photo-thumbnail {
+		   width: 80px;
+		   height: 80px;
+		   object-fit: cover;
+		   border-radius: 8px;
+		   cursor: pointer;
+		   transition: transform 0.2s;
+	   }
+	   .photo-thumbnail:hover {
+		   transform: scale(1.05);
 	   }
    </style>
 </head>
@@ -243,6 +275,14 @@
 			   </div>
 		   </div>
 	   </div>
+   </div>
+
+   <!-- Modal para ver fotos -->
+   <div id="photo-modal" class="photo-modal">
+	   <button id="close-photo-modal" class="absolute top-4 right-4 text-white text-3xl z-10 hover:text-gray-300">
+		   <i class="fas fa-times"></i>
+	   </button>
+	   <img id="photo-modal-img" src="" alt="Foto de tortilla">
    </div>
 
    <div class="container mx-auto px-4 py-8 max-w-4xl">
@@ -684,6 +724,120 @@ ${window.location.href}`;
 		   }
 	   }
 
+	   // Actualizar historial con foto
+	   async function actualizarHistorialFirebase(id, datos) {
+		   try {
+			   await window.firestore.updateDoc(window.firestore.doc(window.db, 'historial', id), datos);
+			   console.log('Historial actualizado en Firebase');
+			   return true;
+		   } catch (error) {
+			   console.error('Error actualizando historial:', error);
+			   return false;
+		   }
+	   }
+
+	   // Subir foto a Firebase Storage
+	   async function subirFotoTortilla(file, apuestaId) {
+		   try {
+			   const timestamp = Date.now();
+			   const fileName = `tortillas/${apuestaId}_${timestamp}.jpg`;
+			   const storageRef = window.firebaseStorage.ref(window.storage, fileName);
+			   
+			   console.log('Subiendo foto...', fileName);
+			   await window.firebaseStorage.uploadBytes(storageRef, file);
+			   
+			   const downloadURL = await window.firebaseStorage.getDownloadURL(storageRef);
+			   console.log('✅ Foto subida:', downloadURL);
+			   
+			   return downloadURL;
+		   } catch (error) {
+			   console.error('Error subiendo foto:', error);
+			   throw error;
+		   }
+	   }
+
+	   // Abrir modal de foto
+	   function abrirFoto(url) {
+		   const modal = document.getElementById('photo-modal');
+		   const img = document.getElementById('photo-modal-img');
+		   img.src = url;
+		   modal.style.display = 'flex';
+	   }
+
+	   // Cerrar modal de foto
+	   function cerrarFoto() {
+		   const modal = document.getElementById('photo-modal');
+		   modal.style.display = 'none';
+	   }
+
+	   // Subir foto de pago
+	   async function subirFotoPago(apuestaId) {
+		   const input = document.createElement('input');
+		   input.type = 'file';
+		   input.accept = 'image/*';
+		   input.capture = 'environment'; // Preferir cámara trasera
+		   
+		   input.onchange = async (e) => {
+			   const file = e.target.files[0];
+			   if (!file) return;
+			   
+			   if (!file.type.startsWith('image/')) {
+				   alert('Por favor selecciona una imagen');
+				   return;
+			   }
+			   
+			   try {
+				   const confirmacion = confirm('¿Subir esta foto como prueba de pago?');
+				   if (!confirmacion) return;
+				   
+				   // Mostrar indicador de carga
+				   const statusIndicator = document.getElementById('status-indicator');
+				   const statusText = document.getElementById('status-text');
+				   statusIndicator.className = 'status-indicator syncing';
+				   statusText.textContent = 'Subiendo foto...';
+				   
+				   // Subir foto a Storage
+				   const fotoURL = await subirFotoTortilla(file, apuestaId);
+				   
+				   // Actualizar historial con URL de la foto
+				   await actualizarHistorialFirebase(apuestaId, {
+					   fotoURL: fotoURL,
+					   fotoPagadaEn: new Date().toISOString()
+				   });
+				   
+				   // Actualizar array local
+				   const apuesta = historial.find(a => a.id === apuestaId);
+				   if (apuesta) {
+					   apuesta.fotoURL = fotoURL;
+					   apuesta.fotoPagadaEn = new Date().toISOString();
+				   }
+				   
+				   // Recargar vista
+				   renderHistorial();
+				   
+				   // Mostrar éxito
+				   statusIndicator.className = 'status-indicator cloud';
+				   statusText.textContent = 'Foto subida ✓';
+				   setTimeout(() => {
+					   statusIndicator.className = 'status-indicator cloud';
+					   statusText.textContent = 'Conectado';
+				   }, 2000);
+				   
+				   alert('¡Foto de la tortilla subida con éxito! 🥚📸');
+			   } catch (error) {
+				   console.error('Error subiendo foto:', error);
+				   alert('Error al subir la foto. Intenta de nuevo.');
+				   
+				   const statusIndicator = document.getElementById('status-indicator');
+				   const statusText = document.getElementById('status-text');
+				   statusIndicator.className = 'status-indicator offline';
+				   statusText.textContent = 'Error';
+			   }
+		   };
+		   
+		   input.click();
+	   }
+
 	   // DOM Elements
 	   const tabActivas = document.getElementById('tab-activas');
 	   const tabNueva = document.getElementById('tab-nueva');
@@ -825,6 +979,17 @@ ${window.location.href}`;
 			   const participantesHtml = apuesta.participantes.map(p => 
 				   `<span class="inline-block bg-amber-100 rounded-full px-3 py-1 text-sm font-semibold text-amber-700 mr-2 mb-2">${p}</span>`
 			   ).join('');
+
+			   const fotoHTML = apuesta.fotoURL ? 
+				   `<div class="mt-3 flex items-center space-x-2">
+					   <img src="${apuesta.fotoURL}" class="photo-thumbnail border-2 border-amber-400" onclick="abrirFoto('${apuesta.fotoURL}')" alt="Tortilla pagada">
+					   <div class="text-xs text-green-600">
+						   <i class="fas fa-check-circle mr-1"></i> Pagada con prueba
+					   </div>
+				   </div>` :
+				   `<button onclick="subirFotoPago('${apuesta.id}')" class="mt-2 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md transition-colors">
+					   <i class="fas fa-camera mr-1"></i> Subir foto de pago
+				   </button>`;
  
 			   const card = document.createElement('div');
 			   card.className = 'p-4 tortilla-card';
@@ -841,7 +1006,8 @@ ${window.location.href}`;
 					   <p class="text-xs font-semibold text-amber-600 uppercase">Resultado</p>
 					   <p class="text-sm font-medium text-green-600">🏆 Ganador: ${apuesta.ganador}</p>
 					   <p class="text-sm font-medium text-amber-700">🥚 Tortillas: ${apuesta.tortillas}</p>
-					   ${apuesta.resultado ? `<p class="text-sm font-medium text-gray-700">📝 Resultado: ${apuesta.resultado}</p>` : ''}
+					   ${apuesta.resultado ? `<p class="text-sm font-medium text-gray-700">📝 ${apuesta.resultado}</p>` : ''}
+					   ${fotoHTML}
 				   </div>
 			   `;
 			   listaHistorial.appendChild(card);
@@ -1457,6 +1623,22 @@ ${window.location.href}`;
 		   
 		   initializeTabs();
 		   initializeWhatsAppModal();
+		   
+		   // Inicializar modal de fotos
+		   const photoModal = document.getElementById('photo-modal');
+		   const closePhotoBtn = document.getElementById('close-photo-modal');
+		   
+		   if (closePhotoBtn) {
+			   closePhotoBtn.addEventListener('click', cerrarFoto);
+		   }
+		   
+		   if (photoModal) {
+			   photoModal.addEventListener('click', (e) => {
+				   if (e.target === photoModal) {
+					   cerrarFoto();
+				   }
+			   });
+		   }
 		   
 		   // Esperar autenticación de Firebase
 		   console.log('⏳ Esperando autenticación Firebase...');
