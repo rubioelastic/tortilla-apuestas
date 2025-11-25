@@ -11,6 +11,7 @@
    <script type="module">
      import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
      import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+     import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
      
      // Configuración de Firebase REAL (ya configurado)
      const firebaseConfig = {
@@ -25,11 +26,54 @@
      // Inicializar Firebase
      const app = initializeApp(firebaseConfig);
      const db = getFirestore(app);
+     const auth = getAuth(app);
+     
+     // Autenticación anónima automática
+     let authInitialized = false;
+     let authTimeout = null;
+     
+     // Timeout de seguridad: si no se autentica en 3 segundos, continuar sin auth
+     authTimeout = setTimeout(() => {
+       if (!authInitialized) {
+         console.warn('⚠️ Continuando sin autenticación (Authentication no habilitada)');
+         authInitialized = true;
+         window.dispatchEvent(new Event('firebase-auth-ready'));
+       }
+     }, 3000);
+     
+     onAuthStateChanged(auth, (user) => {
+       if (user) {
+         console.log('✅ Usuario autenticado:', user.uid);
+         clearTimeout(authTimeout);
+         authInitialized = true;
+         window.dispatchEvent(new Event('firebase-auth-ready'));
+       } else {
+         console.log('🔐 Autenticando usuario...');
+         signInAnonymously(auth).catch((error) => {
+           console.error('❌ Error en autenticación:', error);
+           console.warn('💡 Habilita Authentication→Anonymous en Firebase Console');
+           // Continuar sin autenticación si falla
+           clearTimeout(authTimeout);
+           authInitialized = true;
+           window.dispatchEvent(new Event('firebase-auth-ready'));
+         });
+       }
+     });
      
      // Hacer disponible globalmente
      window.db = db;
+     window.auth = auth;
      window.firestore = { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot };
      window.isFirebaseReal = true; // Marcar que Firebase está configurado
+     window.waitForAuth = () => {
+       return new Promise((resolve) => {
+         if (authInitialized) {
+           resolve();
+         } else {
+           window.addEventListener('firebase-auth-ready', resolve, { once: true });
+         }
+       });
+     };
    </script>
    
    <style>
@@ -90,8 +134,8 @@
 </head>
 <body class="tortilla-bg min-h-screen">
    <!-- Indicador de estado -->
-   <div id="status-indicator" class="status-indicator cloud">
-	   <i class="fas fa-cloud"></i> <span id="status-text">Sincronizado</span>
+   <div id="status-indicator" class="status-indicator syncing">
+	   <i class="fas fa-spinner fa-spin"></i> <span id="status-text">Conectando...</span>
    </div>
 
    <!-- Botón configuración WhatsApp -->
@@ -1391,6 +1435,17 @@ ${window.location.href}`;
 		   initializeTabs();
 		   initializeWhatsAppModal();
 		   
+		   // Esperar autenticación de Firebase
+		   console.log('⏳ Esperando autenticación Firebase...');
+		   await window.waitForAuth();
+		   console.log('✅ Autenticación completada');
+		   
+		   // Actualizar indicador de estado
+		   const statusIndicator = document.getElementById('status-indicator');
+		   const statusText = document.getElementById('status-text');
+		   statusIndicator.className = 'status-indicator cloud';
+		   statusText.textContent = 'Conectado';
+		   
 		   // Cargar datos en paralelo
 		   await Promise.all([
 			   loadWhatsAppConfig(),
@@ -1400,7 +1455,7 @@ ${window.location.href}`;
 		   // Cargar participantes en el formulario
 		   await renderParticipantesFormulario();
 		   
-		   console.log('Aplicación inicializada completamente');
+		   console.log('✅ Aplicación inicializada completamente');
 	   });
    </script>
 </body>
