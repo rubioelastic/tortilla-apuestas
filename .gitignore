@@ -106,3 +106,4 @@ htmlcov/
 *.tmp
 *.temp
 .cache/
+backend/firebase-credentials.json
