@@ -1,0 +1,3155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <!-- Cache Buster: 2026-02-25-00:15 -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TortillApuestas | Servidor Privado</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="La app de apuestas entre amigos - Versión servidor privado">
+    <meta name="theme-color" content="#f59e0b">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="ConTortilla.png" type="image/png">
+    <link rel="apple-touch-icon" href="ConTortilla.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #fef3c7;
+        }
+        
+        .api-url {
+            color: #0ea5e9;
+        }
+        .loading {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Animación flotante para la tortilla */
+        .floating-tortilla {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        
+        /* Mejoras para scroll en móvil */
+        .scrollbar-hide {
+            -ms-overflow-style: none;  /* IE y Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;  /* Chrome, Safari y Opera */
+        }
+        /* Scroll suave en tabs */
+        .overflow-x-auto {
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app"></div>
+
+    <script>
+        // Configuración de la API
+        const API_URL = '';
+
+        // ═══════════════════════════════════════════════════════════════
+        // AUTENTICACIÓN
+        // ═══════════════════════════════════════════════════════════════
+
+        class AuthService {
+            constructor() {
+                this.token = localStorage.getItem('token');
+                this.user = null;
+            }
+
+            isAuthenticated() {
+                return !!this.token && !!this.user;
+            }
+
+            async loadUser() {
+                if (!this.token) return;
+                
+                const response = await fetch(`${API_URL}/api/users/me`, {
+                    headers: { 'Authorization': `Bearer ${this.token}` }
+                });
+                
+                if (response.ok) {
+                    this.user = await response.json();
+                } else {
+                    this.logout();
+                }
+            }
+
+            async register(username, email, password, displayName, phone = null) {
+                const response = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email, password, display_name: displayName, phone })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+
+                const data = await response.json();
+                this.token = data.access_token;
+                this.user = data.user;
+                localStorage.setItem('token', this.token);
+            }
+
+            async login(username, password) {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+
+                const data = await response.json();
+                this.token = data.access_token;
+                this.user = data.user;
+                localStorage.setItem('token', this.token);
+            }
+
+            logout() {
+                this.token = null;
+                this.user = null;
+                localStorage.removeItem('token');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // GESTIÓN DE APUESTAS
+        // ═══════════════════════════════════════════════════════════════
+
+        class BetService {
+            constructor(authService) {
+                this.auth = authService;
+            }
+
+            async getBets(status = null) {
+                let url = `${API_URL}/api/bets`;
+                if (status) url += `?status=${status}`;
+                
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${this.auth.token}` }
+                });
+                if (!response.ok) throw new Error('Error obteniendo apuestas');
+                return await response.json();
+            }
+
+            async getBet(betId) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}`, {
+                    headers: { 'Authorization': `Bearer ${this.auth.token}` }
+                });
+                if (!response.ok) throw new Error('Error obteniendo apuesta');
+                return await response.json();
+            }
+
+            async createBet(title, description, options = [], invitedUserIds = []) {
+                const response = await fetch(`${API_URL}/api/bets`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ 
+                        title, 
+                        description: description || null,
+                        options: options.length > 0 ? options : null,
+                        invited_user_ids: invitedUserIds.length > 0 ? invitedUserIds : null
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async joinBet(betId, chosenOption = null) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}/join`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ chosen_option: chosenOption })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async finalizeBet(betId, winningOption, notes = null, tortillasCount = 1) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}/finalize`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ 
+                        winning_option: winningOption,
+                        notes,
+                        tortillas_count: tortillasCount
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async markBetAsPaid(betId, photoBase64 = null) {
+                const body = {};
+                if (photoBase64) {
+                    body.payment_photo = photoBase64;
+                }
+                const response = await fetch(`${API_URL}/api/bets/${betId}/mark-paid`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${this.auth.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async updateBet(betId, updateData) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify(updateData)
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async getRanking() {
+                const response = await fetch(`${API_URL}/api/ranking`, {
+                    headers: { 'Authorization': `Bearer ${this.auth.token}` }
+                });
+                if (!response.ok) throw new Error('Error obteniendo ranking');
+                return await response.json();
+            }
+
+            async getGlobalStats() {
+                const response = await fetch(`${API_URL}/api/stats/global`, {
+                    headers: { 'Authorization': `Bearer ${this.auth.token}` }
+                });
+                if (!response.ok) throw new Error('Error obteniendo estadísticas');
+                return await response.json();
+            }
+
+            async getUsers() {
+                const response = await fetch(`${API_URL}/api/users`, {
+                    headers: { 'Authorization': `Bearer ${this.auth.token}` }
+                });
+                if (!response.ok) throw new Error('Error obteniendo usuarios');
+                return await response.json();
+            }
+
+            async inviteUsers(betId, userIds) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}/invite`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ user_ids: userIds })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async chooseOption(betId, chosenOption) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}/choose-option`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ chosen_option: chosenOption })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async closeBet(betId) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ status: 'closed' })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+
+            async reopenBet(betId) {
+                const response = await fetch(`${API_URL}/api/bets/${betId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.auth.token}`
+                    },
+                    body: JSON.stringify({ status: 'open' })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+                return await response.json();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // APLICACIÓN PRINCIPAL
+        // ═══════════════════════════════════════════════════════════════
+
+        const auth = new AuthService();
+        const bets = new BetService(auth);
+        let currentTab = 'activas';
+        let allUsers = [];
+
+        function render() {
+            const app = document.getElementById('app');
+
+            if (!auth.isAuthenticated()) {
+                return renderAuth();
+            }
+
+            app.innerHTML = `
+                <!-- Barra superior con info de usuario -->
+                <div class="bg-amber-500 text-white shadow-sm">
+                    <div class="max-w-7xl mx-auto px-4 py-2 flex justify-end items-center gap-4">
+                        <span class="flex items-center gap-2 text-sm">
+                            <i class="fas fa-user-circle"></i>
+                            ${auth.user.display_name}
+                        </span>
+                        <button onclick="logout()" class="bg-amber-700 hover:bg-amber-800 px-3 py-1 rounded text-sm">
+                            Salir
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Header principal -->
+                <header class="flex flex-col items-center py-8">
+                    <div class="floating-tortilla mb-4">
+                        <img id="header-icon" src="ConTortilla.png" alt="Tortilla" 
+                             class="rounded-full border-4 border-amber-500 cursor-pointer hover:border-amber-600 transition" 
+                             style="width: 60mm; height: 60mm; object-fit: cover;"
+                             onclick="openQRModal()"
+                             title="Click para ver el código QR">
+                    </div>
+                    <h1 class="text-4xl font-bold text-amber-800 mb-2">TortillApuestas</h1>
+                    <p class="text-lg text-amber-700">¡Donde las apuestas se pagan con tortilla!</p>
+                </header>
+
+                <div class="w-full px-4 pb-8">
+                    <!-- Tabs de navegación - mejorado para móvil -->
+                    <div class="relative mb-6">
+                        <div class="flex border-b border-amber-300 overflow-x-auto scrollbar-hide gap-1 pb-0">
+                            <button id="tab-activas" onclick="switchTab('activas')" 
+                                class="px-4 md:px-6 py-3 font-medium text-amber-800 border-b-2 border-amber-500 whitespace-nowrap flex items-center gap-2 text-sm md:text-base flex-shrink-0">
+                                <img src="ConTortilla.png" alt="Tortilla" class="w-5 h-5 object-contain">
+                                <span class="hidden xs:inline">Apuestas </span>Activas
+                            </button>
+                            <button id="tab-nueva" onclick="switchTab('nueva')" 
+                                class="px-4 md:px-6 py-3 font-medium text-amber-600 hover:text-amber-800 whitespace-nowrap text-sm md:text-base flex-shrink-0">
+                                Nueva<span class="hidden xs:inline"> Apuesta</span>
+                            </button>
+                            <button id="tab-historial" onclick="switchTab('historial')" 
+                                class="px-4 md:px-6 py-3 font-medium text-amber-600 hover:text-amber-800 whitespace-nowrap flex items-center gap-2 text-sm md:text-base flex-shrink-0">
+                                <img src="SinTortilla.png" alt="Plato vacío" class="w-5 h-5 object-contain">
+                                Historial
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Contenido - Layout responsivo: vertical en móvil, 2 columnas en apaisado -->
+                    <div class="flex flex-col space-y-6 lg:grid lg:grid-cols-[1fr_2fr] lg:gap-6 lg:space-y-0 lg:items-start">
+                        <!-- Estadísticas (izquierda en apaisado, abajo en móvil) -->
+                        <div class="order-2 space-y-6 lg:order-1 lg:sticky lg:top-4">
+                            <!-- Hall of Fame -->
+                            <div class="bg-white rounded-lg shadow-lg p-6">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="text-xl font-bold">🏆 Hall of Fame</h3>
+                                    <button onclick="sendHallOfFameToTelegram()" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+                                        <i class="fab fa-telegram"></i> Enviar
+                                    </button>
+                                </div>
+                                <div id="hallOfFameContainer" class="space-y-3">
+                                    <div class="text-center py-4">
+                                        <i class="fas fa-spinner loading text-orange-500"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Ranking Top 5 -->
+                            <div class="bg-white rounded-lg shadow-lg p-6">
+                                <h3 class="text-xl font-bold mb-4">🏆 Top 5 Ranking</h3>
+                                <div id="rankingContainer" class="space-y-2">
+                                    <div class="text-center py-4">
+                                        <i class="fas fa-spinner loading text-orange-500"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Estadísticas globales -->
+                            <div class="bg-white rounded-lg shadow-lg p-6">
+                                <h3 class="text-xl font-bold mb-4">📊 Estadísticas</h3>
+                                <div id="statsContainer" class="space-y-3">
+                                    <div onclick="applyStatFilter('all')" 
+                                         class="flex justify-between items-center p-2 bg-orange-50 rounded cursor-pointer hover:shadow-md transition">
+                                        <span class="text-sm text-gray-600">Total apuestas</span>
+                                        <span id="stat-total" class="font-bold text-orange-600">-</span>
+                                    </div>
+                                    <div onclick="applyStatFilter('active')" 
+                                         class="flex justify-between items-center p-2 bg-orange-50 rounded cursor-pointer hover:shadow-md transition">
+                                        <span class="text-sm text-gray-600">Activas</span>
+                                        <span id="stat-active" class="font-bold text-green-600">-</span>
+                                    </div>
+                                    <div onclick="applyStatFilter('completed')" 
+                                         class="flex justify-between items-center p-2 bg-orange-50 rounded cursor-pointer hover:shadow-md transition">
+                                        <span class="text-sm text-gray-600">Completadas</span>
+                                        <span id="stat-completed" class="font-bold text-blue-600">-</span>
+                                    </div>
+                                    <div onclick="applyStatFilter('owed')" 
+                                         class="flex justify-between items-center p-2 bg-orange-50 rounded cursor-pointer hover:shadow-md transition">
+                                        <span class="text-sm text-gray-600">Tortillas pendientes</span>
+                                        <span id="stat-tortillas-owed" class="font-bold text-red-600">-</span>
+                                    </div>
+                                    <div onclick="applyStatFilter('paid')" 
+                                         class="flex justify-between items-center p-2 bg-green-50 rounded cursor-pointer hover:shadow-md transition">
+                                        <span class="text-sm text-gray-600">Tortillas pagadas</span>
+                                        <span id="stat-tortillas-paid" class="font-bold text-green-600">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Info API -->
+                            <div class="bg-blue-50 rounded-lg shadow p-4 text-sm">
+                                <h4 class="font-bold mb-2">✨ Conectado</h4>
+                                <p class="text-gray-600">✅ API: <span class="api-url">${API_URL || 'Localhost'}</span></p>
+                                <p class="text-gray-600">✅ BD: PostgreSQL</p>
+                                <p class="text-gray-600">✅ Servidor privado</p>
+                            </div>
+                        </div>
+
+                        <!-- Apuestas (derecha en apaisado, arriba en móvil) -->
+                        <div class="order-1 lg:order-2">
+                            <!-- Tab: Apuestas Activas -->
+                            <div id="content-activas" class="bg-white rounded-lg shadow-lg p-6">
+                                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                                    <img src="ConTortilla.png" alt="Tortilla" class="w-7 h-7 object-contain">
+                                    Apuestas en juego
+                                </h2>
+                                <div id="betsContainer" class="space-y-4">
+                                    <div class="text-center py-8">
+                                        <i class="fas fa-spinner loading text-2xl text-orange-500"></i>
+                                        <p>Cargando apuestas...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tab: Nueva Apuesta -->
+                            <div id="content-nueva" class="bg-white rounded-lg shadow-lg p-6 hidden">
+                                <h2 class="text-2xl font-bold mb-4">📢 Crear nueva apuesta</h2>
+                                <form onsubmit="handleCreateBet(event)" class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Título de la apuesta
+                                        </label>
+                                        <input type="text" id="betTitle" 
+                                            placeholder="Ej: ¿Quién ganará la liga?" 
+                                            class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            minlength="3"
+                                            maxlength="200"
+                                            required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Descripción
+                                        </label>
+                                        <textarea id="betDescription" 
+                                            placeholder="Detalles de la apuesta (opcional)"
+                                            class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            rows="3"></textarea>
+                                    </div>
+                                    
+                                    <!-- Opciones de la apuesta -->
+                                    <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                                        <label class="block text-sm font-bold text-gray-800 mb-2">
+                                            🎯 Paso 1: Define las opciones de la apuesta
+                                        </label>
+                                        <textarea id="betOptions" 
+                                            placeholder="Real Madrid&#10;Barcelona&#10;Empate"
+                                            oninput="updateOptionSelectors()"
+                                            class="w-full px-4 py-2 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            rows="5"></textarea>
+                                        <p class="text-xs text-blue-700 font-medium mt-2 bg-blue-100 p-2 rounded">
+                                            💡 Escribe una opción por línea. Luego podrás asignar cada opción a los participantes.
+                                        </p>
+                                    </div>
+                                    
+                                    <!-- Invitar usuarios -->
+                                    <div class="bg-green-50 border-2 border-green-200 rounded-lg p-4">
+                                        <label class="block text-sm font-bold text-gray-800 mb-2">
+                                            👥 Paso 2: Invita usuarios y asigna qué apuesta cada uno
+                                        </label>
+                                        <div id="usersSelector" class="max-h-64 overflow-y-auto border-2 border-green-300 rounded-lg p-3 bg-white space-y-2">
+                                            <p class="text-sm text-gray-500">Cargando usuarios...</p>
+                                        </div>
+                        <div class="flex flex-col mt-2 space-y-2">
+                            <p class="text-xs text-green-700 font-medium bg-green-100 p-2 rounded">
+                                ✅ Marca los usuarios que participarán y selecciona qué opción apuesta cada uno.
+                                <br>📌 Como creador, TÚ decides qué apuesta cada participante.
+                            </p>
+                            <div class="flex gap-2">
+                                <button type="button" onclick="openAddUserModal()" 
+                                    class="flex-1 text-sm bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-user-plus mr-1"></i>Añadir usuario
+                                </button>
+                                <button type="button" onclick="showQuickAssignModal()" 
+                                    class="flex-1 text-sm bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-magic mr-1"></i>Asignación rápida
+                                </button>
+                            </div>
+                        </div>
+                                    </div>
+                                    
+                                    <div id="validationWarning" class="hidden bg-yellow-50 border-2 border-yellow-400 rounded-lg p-3 text-sm text-yellow-800">
+                                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                                        <span id="validationMessage"></span>
+                                    </div>
+                                    
+                                    <button type="submit" id="createBetButton" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg transition">
+                                        <i class="fas fa-plus-circle mr-2"></i>
+                                        <span id="createBetButtonText">Crear Apuesta</span>
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- Tab: Historial -->
+                            <div id="content-historial" class="bg-white rounded-lg shadow-lg p-6 hidden">
+                                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                                    <img src="SinTortilla.png" alt="Plato vacío" class="w-7 h-7 object-contain">
+                                    Historial de apuestas
+                                </h2>
+                                <div id="historialContainer" class="space-y-4">
+                                    <div class="text-center py-8">
+                                        <i class="fas fa-spinner loading text-2xl text-orange-500"></i>
+                                        <p>Cargando historial...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de finalizar apuesta -->
+                <div id="finalizeBetModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+                        <div class="bg-orange-500 text-white p-4 rounded-t-lg flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-trophy text-xl"></i>
+                                <h3 class="text-lg font-bold">Finalizar Apuesta</h3>
+                            </div>
+                            <button onclick="closeFinalizeBetModal()" class="text-white hover:text-gray-200">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <form onsubmit="submitFinalizeBet(event)" class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    🏆 Opción ganadora *
+                                </label>
+                                <select id="finalizeBetWinnerSelect" required 
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                    <option value="">-- Selecciona la opción ganadora --</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    📝 Notas del resultado (opcional)
+                                </label>
+                                <textarea id="finalizeBetNotes" 
+                                    placeholder="Ej: Resultado 3-1, victoria clara"
+                                    rows="2"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    🥚 Tortillas a pagar *
+                                </label>
+                                <input type="number" id="finalizeBetTortillas" 
+                                    value="1" min="1" max="100" required
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            </div>
+
+                            <div class="flex gap-3 mt-6">
+                                <button type="button" onclick="closeFinalizeBetModal()" 
+                                    class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    Cancelar
+                                </button>
+                                <button type="submit" 
+                                    class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-check mr-2"></i>Finalizar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal de captura de foto -->
+                <div id="photoCaptureModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                        <div class="p-6">
+                            <h3 class="text-xl font-bold mb-4 text-center">📸 Foto Recuerdo del Pago</h3>
+                            
+                            <!-- Video preview para la cámara -->
+                            <div class="mb-4">
+                                <video id="cameraPreview" autoplay playsinline class="w-full rounded-lg bg-black" style="max-height: 300px;"></video>
+                                <canvas id="photoCanvas" class="hidden"></canvas>
+                                <img id="capturedPhoto" class="w-full rounded-lg hidden" style="max-height: 300px;">
+                            </div>
+
+                            <!-- Botones de acción -->
+                            <div id="captureButtons" class="flex gap-2">
+                                <button onclick="capturePhoto()" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-camera mr-2"></i>Capturar
+                                </button>
+                                <button onclick="closeCameraModal()" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-times mr-2"></i>Cancelar
+                                </button>
+                            </div>
+
+                            <!-- Botones después de capturar -->
+                            <div id="confirmButtons" class="hidden flex gap-2">
+                                <button onclick="retakePhoto()" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-redo mr-2"></i>Repetir
+                                </button>
+                                <button onclick="confirmPhoto()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-check mr-2"></i>Confirmar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de visualización de foto en tamaño completo -->
+                <div id="photoViewModal" class="fixed inset-0 bg-black bg-opacity-90 hidden items-center justify-center z-50" style="display: none;" onclick="closePhotoViewModal()">
+                    <div class="relative max-w-full max-h-full p-4" onclick="event.stopPropagation()">
+                        <button onclick="closePhotoViewModal()" class="absolute top-2 right-2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 font-bold p-2 rounded-full transition z-10">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                        <img id="photoViewImage" src="" class="max-w-full max-h-screen object-contain rounded-lg">
+                    </div>
+                </div>
+
+                <!-- Botón flotante de Telegram -->
+                <button id="telegramFloatingBtn" onclick="openTelegramModal()" 
+                    class="fixed bottom-6 right-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg transition-all hover:scale-110 z-40">
+                    <i class="fab fa-telegram text-2xl"></i>
+                </button>
+
+                <!-- Modal de Telegram -->
+                <div id="telegramModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                        <div class="bg-blue-500 text-white p-4 rounded-t-lg flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <i class="fab fa-telegram text-2xl"></i>
+                                <h3 class="text-lg font-bold">Únete al Grupo de Telegram</h3>
+                            </div>
+                            <button onclick="closeTelegramModal()" class="text-white hover:text-gray-200">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <div class="p-6 space-y-4">
+                            <!-- Sección de QR para unirse al grupo -->
+                            <div class="border-2 border-blue-500 rounded-lg p-4 bg-blue-50">
+                                <div class="flex flex-col items-center">
+                                    <div class="bg-white p-3 rounded-lg shadow-md mb-3">
+                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://t.me/+USvVa6Ymd7RmNDQ0" 
+                                            alt="QR Code del grupo de Telegram" 
+                                            class="w-50 h-50">
+                                    </div>
+                                    <p class="text-sm text-gray-700 text-center mb-3 font-medium">
+                                        📱 Escanea el código QR con tu móvil para unirte al grupo de TortillApuestas
+                                    </p>
+                                    <a href="https://t.me/+USvVa6Ymd7RmNDQ0" 
+                                        target="_blank"
+                                        class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition">
+                                        <i class="fab fa-telegram mr-2"></i>Abrir en Telegram
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- Mensaje informativo -->
+                            <div class="bg-green-50 p-4 rounded-lg border-2 border-green-200">
+                                <p class="text-sm text-gray-700 text-center">
+                                    <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                                    <strong>Notificaciones automáticas activadas</strong>
+                                </p>
+                                <p class="text-xs text-gray-600 text-center mt-2">
+                                    Recibirás notificaciones automáticas de nuevas apuestas, finalizaciones y pagos directamente en Telegram (con fotos incluidas)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de QR -->
+                <div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;" onclick="closeQRModal()">
+                    <div class="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4" onclick="event.stopPropagation()">
+                        <div class="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 rounded-t-lg flex justify-between items-center">
+                            <h3 class="text-lg font-bold">📱 Escanea para abrir</h3>
+                            <button onclick="closeQRModal()" class="text-white hover:text-gray-200">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <div class="p-6 flex flex-col items-center">
+                            <div class="bg-white p-2 rounded-lg shadow-lg mb-4">
+                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://tortilla.rubiocloud.duckdns.org" 
+                                     alt="QR Code de TortillApuestas" 
+                                     class="w-48 h-48">
+                            </div>
+                            <p class="text-sm text-gray-700 text-center font-medium">
+                                🌮 TortillApuestas
+                            </p>
+                            <p class="text-xs text-gray-500 text-center mt-2">
+                                https://tortilla.rubiocloud.duckdns.org
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de añadir usuario -->
+                <div id="addUserModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                        <div class="bg-blue-500 text-white p-4 rounded-t-lg flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-user-plus text-xl"></i>
+                                <h3 class="text-lg font-bold">Añadir Nuevo Usuario</h3>
+                            </div>
+                            <button onclick="closeAddUserModal()" class="text-white hover:text-gray-200">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <form onsubmit="handleAddUser(event)" class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Usuario *</label>
+                                <input type="text" id="newUsername" required
+                                    placeholder="ej: juan_perez"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
+                                <input type="text" id="newDisplayName" required
+                                    placeholder="ej: Juan Pérez"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                                <input type="email" id="newEmail" required
+                                    placeholder="ej: juan@email.com"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono (opcional)</label>
+                                <input type="tel" id="newPhone"
+                                    placeholder="ej: +34123456789"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <p class="text-xs text-gray-500 mt-1">Para contacto (notificaciones via Telegram)</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña inicial *</label>
+                                <input type="password" id="newPassword" required
+                                    placeholder="Mínimo 6 caracteres"
+                                    minlength="6"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <p class="text-xs text-gray-500 mt-1">El usuario podrá cambiarla después</p>
+                            </div>
+
+                            <div class="flex gap-3 mt-6">
+                                <button type="button" onclick="closeAddUserModal()" 
+                                    class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    Cancelar
+                                </button>
+                                <button type="submit" 
+                                    class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-user-plus mr-2"></i>Crear Usuario
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal de asignación rápida -->
+                <div id="quickAssignModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                        <div class="bg-purple-500 text-white p-4 rounded-t-lg flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-magic text-xl"></i>
+                                <h3 class="text-lg font-bold">Asignación Rápida</h3>
+                            </div>
+                            <button onclick="closeQuickAssignModal()" class="text-white hover:text-gray-200">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <div class="p-6 space-y-4">
+                            <p class="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+                                <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                                Asigna la misma opción a todos los usuarios seleccionados que aún no tienen opción.
+                            </p>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Selecciona la opción a asignar:
+                                </label>
+                                <select id="quickAssignOption" 
+                                    class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                    <option value="">Selecciona una opción...</option>
+                                </select>
+                            </div>
+                            
+                            <div id="quickAssignPreview" class="text-sm bg-gray-50 p-3 rounded-lg border">
+                                <p class="font-medium">Usuarios que serán asignados:</p>
+                                <p class="text-gray-600 mt-1" id="quickAssignUsersList">-</p>
+                            </div>
+
+                            <div class="flex gap-3 mt-6">
+                                <button type="button" onclick="closeQuickAssignModal()" 
+                                    class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    Cancelar
+                                </button>
+                                <button type="button" onclick="applyQuickAssign()" 
+                                    class="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-check mr-2"></i>Asignar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de edición de apuesta -->
+                <div id="editBetModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 my-8">
+                        <div class="bg-orange-500 text-white p-4 rounded-t-lg flex justify-between items-center sticky top-0 z-10">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-edit text-xl"></i>
+                                <h3 class="text-lg font-bold">Editar Apuesta</h3>
+                            </div>
+                            <button onclick="closeEditBetModal()" class="text-white hover:text-gray-200">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <form onsubmit="handleUpdateBet(event)" class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                            <input type="hidden" id="editBetId">
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Título de la apuesta
+                                </label>
+                                <input type="text" id="editBetTitle" 
+                                    placeholder="Ej: ¿Quién ganará la liga?" 
+                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    minlength="3"
+                                    maxlength="200"
+                                    required>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Descripción
+                                </label>
+                                <textarea id="editBetDescription" 
+                                    placeholder="Detalles de la apuesta (opcional)"
+                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    rows="3"></textarea>
+                            </div>
+                            
+                            <!-- Opciones de la apuesta -->
+                            <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                                <label class="block text-sm font-bold text-gray-800 mb-2">
+                                    🎯 Opciones de la apuesta
+                                </label>
+                                <textarea id="editBetOptions" 
+                                    placeholder="Real Madrid&#10;Barcelona&#10;Empate"
+                                    oninput="updateEditOptionSelectors()"
+                                    class="w-full px-4 py-2 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    rows="5"></textarea>
+                                <p class="text-xs text-blue-700 font-medium mt-2 bg-blue-100 p-2 rounded">
+                                    💡 Una opción por línea. Cambiar las opciones actualizará los selectores.
+                                </p>
+                            </div>
+                            
+                            <!-- Participantes actuales -->
+                            <div class="bg-green-50 border-2 border-green-200 rounded-lg p-4">
+                                <label class="block text-sm font-bold text-gray-800 mb-2">
+                                    👥 Participantes y sus opciones
+                                </label>
+                                <div id="editParticipantsList" class="space-y-2 max-h-64 overflow-y-auto border-2 border-green-300 rounded-lg p-3 bg-white">
+                                    <!-- Se llenará dinámicamente -->
+                                </div>
+                                <p class="text-xs text-green-700 font-medium bg-green-100 p-2 rounded mt-2">
+                                    ✅ Puedes cambiar la opción de cada participante o eliminarlos
+                                </p>
+                            </div>
+                            
+                            <!-- Añadir nuevos participantes -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    ➕ Añadir más participantes
+                                </label>
+                                <div id="editAddParticipantsSelector" class="max-h-40 overflow-y-auto border rounded-lg p-3 bg-gray-50 space-y-2">
+                                    <!-- Se llenará dinámicamente con usuarios no participantes -->
+                                </div>
+                            </div>
+                            
+                            <div id="editValidationWarning" class="hidden bg-yellow-50 border-2 border-yellow-400 rounded-lg p-3 text-sm text-yellow-800">
+                                <i class="fas fa-exclamation-triangle mr-2"></i>
+                                <span id="editValidationMessage"></span>
+                            </div>
+
+                            <div class="flex gap-3 mt-6 sticky bottom-0 bg-white pt-4 border-t">
+                                <button type="button" onclick="closeEditBetModal()" 
+                                    class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    Cancelar
+                                </button>
+                                <button type="submit" id="updateBetButton" 
+                                    class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                    <i class="fas fa-save mr-2"></i>
+                                    <span id="updateBetButtonText">Guardar Cambios</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal de cambio de contraseña -->
+                <div id="changePasswordModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                        <div class="bg-red-500 text-white p-4 rounded-t-lg flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-lock text-xl"></i>
+                                <h3 class="text-lg font-bold">⚠️ Cambio de Contraseña Obligatorio</h3>
+                            </div>
+                        </div>
+
+                        <div class="p-6">
+                            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm text-yellow-700">
+                                            Estás usando la contraseña por defecto <strong>"tortilla123"</strong>.
+                                            Por seguridad, debes cambiarla ahora.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <form onsubmit="handleChangePassword(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña *</label>
+                                    <input type="password" id="newPasswordInput" required
+                                        placeholder="Mínimo 6 caracteres"
+                                        minlength="6"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500">
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar nueva contraseña *</label>
+                                    <input type="password" id="confirmPasswordInput" required
+                                        placeholder="Repite la contraseña"
+                                        minlength="6"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500">
+                                </div>
+
+                                <div class="mt-6">
+                                    <button type="submit" 
+                                        class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition">
+                                        <i class="fas fa-key mr-2"></i>Cambiar Contraseña
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadBets();
+            loadRanking();
+            loadHallOfFame();
+        }
+
+        function renderAuth() {
+            const app = document.getElementById('app');
+
+            app.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center">
+                    <div class="w-full max-w-md">
+                        <div class="bg-white rounded-lg shadow-lg p-8">
+                            <div class="flex justify-center mb-2">
+                                <img src="ConTortilla.png" alt="Tortilla" class="w-16 h-16 object-contain">
+                            </div>
+                            <h2 class="text-2xl font-bold text-center mb-8">TortillApuestas</h2>
+
+                            <div class="space-y-4">
+                                <input type="text" id="username" placeholder="Usuario" 
+                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                <input type="password" id="password" placeholder="Contraseña"
+                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                
+                                <!-- Campos adicionales para registro (ocultos por defecto) -->
+                                <div id="registerFields" class="space-y-4" style="display: none;">
+                                    <input type="email" id="email" placeholder="Email" 
+                                        class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                    <input type="text" id="displayName" placeholder="Nombre mostrado"
+                                        class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                    <input type="tel" id="phone" placeholder="Teléfono (opcional)"
+                                        class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                </div>
+
+                                <!-- Botón principal (cambia según el modo) -->
+                                <button id="mainActionBtn" onclick="handleLogin()" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg">
+                                    Iniciar Sesión
+                                </button>
+
+                                <!-- Toggle entre login y registro -->
+                                <div class="text-center">
+                                    <button id="toggleModeBtn" onclick="toggleAuthMode()" class="text-orange-500 hover:text-orange-600 text-sm font-medium">
+                                        ¿No tienes cuenta? Regístrate
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mt-8 p-4 bg-blue-50 rounded-lg text-center text-sm text-gray-600">
+                                <p>🔒 Servidor privado</p>
+                                <p class="api-url mt-2">${API_URL || 'Base de datos local'}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleAuthMode() {
+            const registerFields = document.getElementById('registerFields');
+            const mainBtn = document.getElementById('mainActionBtn');
+            const toggleBtn = document.getElementById('toggleModeBtn');
+            
+            const isRegisterMode = registerFields.style.display === 'none';
+            
+            if (isRegisterMode) {
+                // Cambiar a modo registro
+                registerFields.style.display = 'block';
+                mainBtn.textContent = 'Registrarse';
+                mainBtn.className = 'w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg';
+                mainBtn.onclick = handleRegister;
+                toggleBtn.textContent = '¿Ya tienes cuenta? Inicia sesión';
+            } else {
+                // Cambiar a modo login
+                registerFields.style.display = 'none';
+                mainBtn.textContent = 'Iniciar Sesión';
+                mainBtn.className = 'w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg';
+                mainBtn.onclick = handleLogin;
+                toggleBtn.textContent = '¿No tienes cuenta? Regístrate';
+            }
+        }
+
+        async function handleRegister() {
+            try {
+                const username = document.getElementById('username').value;
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                const displayName = document.getElementById('displayName').value;
+                const phone = document.getElementById('phone').value;
+
+                if (!username || !email || !password || !displayName) {
+                    alert('❌ Completa todos los campos obligatorios');
+                    return;
+                }
+
+                await auth.register(username, email, password, displayName, phone);
+                render();
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        async function handleLogin() {
+            try {
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+
+                if (!username || !password) {
+                    alert('❌ Completa usuario y contraseña');
+                    return;
+                }
+
+                await auth.login(username, password);
+                
+                // Renderizar la app primero
+                render();
+                
+                // Cargar datos iniciales después del login
+                loadActiveBets();
+                loadRanking();
+                loadHallOfFame();
+                loadStats();
+                
+                // Verificar si usa la contraseña por defecto y mostrar modal
+                if (password === 'tortilla123') {
+                    showChangePasswordModal();
+                }
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        function logout() {
+            auth.logout();
+            render();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Cambiar icono del header según la pestaña
+            const headerIcon = document.getElementById('header-icon');
+            if (tab === 'historial') {
+                headerIcon.src = 'SinTortilla.png';
+                headerIcon.alt = 'Plato vacío';
+            } else {
+                headerIcon.src = 'ConTortilla.png';
+                headerIcon.alt = 'Tortilla';
+            }
+            
+            // Actualizar estilos de tabs
+            const tabs = ['activas', 'nueva', 'historial'];
+            tabs.forEach(t => {
+                const tabBtn = document.getElementById(`tab-${t}`);
+                const content = document.getElementById(`content-${t}`);
+                
+                if (t === tab) {
+                    tabBtn.classList.add('text-amber-800', 'border-b-2', 'border-amber-500');
+                    tabBtn.classList.remove('text-amber-600');
+                    content.classList.remove('hidden');
+                } else {
+                    tabBtn.classList.remove('text-amber-800', 'border-b-2', 'border-amber-500');
+                    tabBtn.classList.add('text-amber-600');
+                    content.classList.add('hidden');
+                }
+            });
+
+            // Cargar datos según el tab
+            if (tab === 'activas') {
+                loadActiveBets();
+            } else if (tab === 'historial') {
+                loadHistorial();
+            } else if (tab === 'nueva') {
+                loadUsersSelector();
+            }
+        }
+
+        // Actualizar selectores de opciones cuando cambien las opciones de la apuesta
+        function updateOptionSelectors() {
+            const optionsText = document.getElementById('betOptions').value.trim();
+            const options = optionsText ? optionsText.split('\n').map(opt => opt.trim()).filter(opt => opt.length > 0) : [];
+            
+            // Actualizar todos los selectores
+            document.querySelectorAll('[name^="userOption-"]').forEach(select => {
+                const currentValue = select.value;
+                
+                if (options.length === 0) {
+                    select.innerHTML = '<option value="">⚠️ Primero define las opciones arriba</option>';
+                } else {
+                    select.innerHTML = '<option value="">Selecciona una opción...</option>' + 
+                        options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+                    // Restaurar valor si aún existe
+                    if (options.includes(currentValue)) {
+                        select.value = currentValue;
+                    }
+                }
+            });
+            
+            // Actualizar estado del botón y advertencias
+            updateCreateBetButtonState();
+        }
+        
+        // Actualizar estado del botón de crear apuesta según validación
+        function updateCreateBetButtonState() {
+            const optionsText = document.getElementById('betOptions').value.trim();
+            const options = optionsText ? optionsText.split('\n').map(opt => opt.trim()).filter(opt => opt.length > 0) : [];
+            const checkedUsers = document.querySelectorAll('input[name="inviteUser"]:checked');
+            
+            const warning = document.getElementById('validationWarning');
+            const message = document.getElementById('validationMessage');
+            const button = document.getElementById('createBetButton');
+            const buttonText = document.getElementById('createBetButtonText');
+            
+            // Si hay opciones definidas y usuarios invitados
+            if (options.length > 0 && checkedUsers.length > 0) {
+                let usersWithoutOption = 0;
+                checkedUsers.forEach(checkbox => {
+                    const userId = checkbox.value;
+                    const select = document.getElementById(`option-${userId}`);
+                    if (!select || !select.value) {
+                        usersWithoutOption++;
+                    }
+                });
+                
+                if (usersWithoutOption > 0) {
+                    warning.classList.remove('hidden');
+                    message.textContent = `⚠️ ${usersWithoutOption} usuario(s) sin opción asignada. Ellos tendrán que elegir después.`;
+                    buttonText.textContent = `Crear Apuesta (${checkedUsers.length - usersWithoutOption}/${checkedUsers.length} asignados)`;
+                } else {
+                    warning.classList.add('hidden');
+                    buttonText.textContent = `Crear Apuesta ✓ (Todas asignadas)`;
+                }
+            } else {
+                warning.classList.add('hidden');
+                buttonText.textContent = 'Crear Apuesta';
+            }
+        }
+        
+        // Mostrar/ocultar selector de opción al marcar checkbox
+        function toggleUserOptionSelector(userId) {
+            const checkbox = document.querySelector(`input[name="inviteUser"][value="${userId}"]`);
+            const select = document.getElementById(`option-${userId}`);
+            const container = checkbox?.closest('.border-2');
+            
+            if (checkbox && select) {
+                if (checkbox.checked) {
+                    select.classList.remove('hidden');
+                    select.disabled = false;
+                    // Resaltar visualmente que está seleccionado
+                    container?.classList.add('bg-green-50', 'border-green-400');
+                    container?.classList.remove('border-gray-200');
+                    updateOptionSelectors(); // Actualizar opciones disponibles
+                } else {
+                    select.classList.add('hidden');
+                    select.disabled = true;
+                    select.value = '';
+                    // Quitar resaltado
+                    container?.classList.remove('bg-green-50', 'border-green-400');
+                    container?.classList.add('border-gray-200');
+                    updateCreateBetButtonState(); // Actualizar estado del botón
+                }
+            }
+        }
+        
+        // Listener cuando se cambia la opción de un usuario
+        document.addEventListener('change', function(e) {
+            if (e.target.matches('[name^="userOption-"]')) {
+                updateCreateBetButtonState();
+            }
+        });
+
+        async function handleCreateBet(event) {
+            event.preventDefault();
+
+            try {
+                const title = document.getElementById('betTitle').value;
+                const description = document.getElementById('betDescription').value;
+                
+                // Recoger opciones
+                const optionsText = document.getElementById('betOptions').value.trim();
+                const options = optionsText ? optionsText.split('\n').map(opt => opt.trim()).filter(opt => opt.length > 0) : [];
+
+                // Recoger usuarios invitados y sus opciones
+                const invitedUserIds = [];
+                const participantChoices = {};
+                const usersWithoutOption = [];
+                
+                document.querySelectorAll('input[name="inviteUser"]:checked').forEach(checkbox => {
+                    const userId = parseInt(checkbox.value);
+                    invitedUserIds.push(userId);
+                    
+                    // Obtener la opción seleccionada para este usuario
+                    const optionSelect = document.getElementById(`option-${userId}`);
+                    if (optionSelect && optionSelect.value) {
+                        participantChoices[userId] = optionSelect.value;
+                    } else {
+                        // Obtener el nombre del usuario para el mensaje
+                        const userLabel = checkbox.parentElement.querySelector('span.font-bold');
+                        if (userLabel) usersWithoutOption.push(userLabel.textContent);
+                    }
+                });
+
+                // Validación mejorada: explicar claramente las consecuencias
+                if (usersWithoutOption.length > 0 && options.length > 0) {
+                    const confirmMsg = `⚠️ ATENCIÓN: ${usersWithoutOption.length} usuario(s) sin opción asignada:\n\n${usersWithoutOption.join(', ')}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📋 OPCIONES:\n\n✅ CONTINUAR → Estos usuarios DEBERÁN elegir su opción después (recibirán notificación)\n\n❌ CANCELAR → Volver al formulario para asignar opciones tú mismo/a\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n\n💡 RECOMENDACIÓN: Si ya sabes qué apuesta cada uno, mejor asignar ahora.\n\n¿Continuar de todos modos?`;
+                    if (!confirm(confirmMsg)) {
+                        return; // Cancelar el envío
+                    }
+                }
+
+                // Crear apuesta con opciones asignadas
+                const betData = {
+                    title,
+                    description: description || null,
+                    options: options.length > 0 ? options : null,
+                    invited_user_ids: invitedUserIds.length > 0 ? invitedUserIds : null,
+                    participant_choices: Object.keys(participantChoices).length > 0 ? participantChoices : null
+                };
+                
+                const response = await fetch(`${API_URL}/api/bets`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${auth.token}`
+                    },
+                    body: JSON.stringify(betData)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error; // Lanzar el objeto completo, no wrapearlo en Error
+                }
+                
+                const newBet = await response.json();
+                
+                // Limpiar formulario
+                document.getElementById('betTitle').value = '';
+                document.getElementById('betDescription').value = '';
+                document.getElementById('betOptions').value = '';
+                // Desmarcar checkboxes y ocultar selectores
+                document.querySelectorAll('input[name="inviteUser"]:checked').forEach(cb => {
+                    cb.checked = false;
+                    toggleUserOptionSelector(parseInt(cb.value)); // Usar la función para limpiar correctamente
+                });
+                
+                notifyNewBet(newBet);
+                
+                // Mensaje de éxito con detalles
+                let successMsg = '✅ Apuesta creada exitosamente';
+                if (Object.keys(participantChoices).length > 0) {
+                    successMsg += `\n\n📌 Opciones asignadas por ti a ${Object.keys(participantChoices).length} participante(s)`;
+                }
+                alert(successMsg);
+                
+                // Cambiar a tab de activas y recargar
+                switchTab('activas');
+                loadActiveBets();
+                loadStats();
+            } catch (error) {
+                console.error('Error creando apuesta:', error);
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        function filterBetsByHallCategory(allBets, category, data) {
+            const userId = data ? data.user_id : null;
+            
+            switch(category) {
+                case 'king':
+                    return allBets.filter(bet => {
+                        if (bet.status !== 'completed' && bet.status !== 'paid') return false;
+                        const participant = bet.participants.find(p => p.user_id === userId);
+                        return participant && participant.chosen_option === bet.winning_option;
+                    });
+                case 'winning_streak':
+                    const winningBets = [];
+                    const sortedBets = allBets.filter(bet => (bet.status === 'completed' || bet.status === 'paid') && bet.winning_option).sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+                    for (const bet of sortedBets) {
+                        const participant = bet.participants.find(p => p.user_id === userId);
+                        if (participant && participant.chosen_option === bet.winning_option) {
+                            winningBets.push(bet);
+                        } else if (participant) break;
+                    }
+                    return winningBets;
+                case 'compulsive':
+                    return allBets.filter(bet => bet.participants.some(p => p.user_id === userId));
+                case 'generous':
+                    return allBets.filter(bet => {
+                        if (bet.status !== 'paid') return false;
+                        const participant = bet.participants.find(p => p.user_id === userId);
+                        return participant && participant.chosen_option && participant.chosen_option !== bet.winning_option;
+                    });
+                case 'worst_payer':
+                    return allBets.filter(bet => {
+                        if (bet.status !== 'completed') return false;
+                        const participant = bet.participants.find(p => p.user_id === userId);
+                        return participant && participant.chosen_option && participant.chosen_option !== bet.winning_option;
+                    });
+                case 'losing_streak':
+                    const losingBets = [];
+                    const sortedLosses = allBets.filter(bet => (bet.status === 'completed' || bet.status === 'paid') && bet.winning_option).sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+                    for (const bet of sortedLosses) {
+                        const participant = bet.participants.find(p => p.user_id === userId);
+                        if (participant && participant.chosen_option && participant.chosen_option !== bet.winning_option) {
+                            losingBets.push(bet);
+                        } else if (participant && participant.chosen_option) break;
+                    }
+                    return losingBets;
+                case 'ranking_user':
+                    // Filtrar apuestas ganadas por un usuario específico
+                    return allBets.filter(bet => {
+                        if (bet.status !== 'completed' && bet.status !== 'paid') return false;
+                        const participant = bet.participants.find(p => p.user_id === userId);
+                        return participant && participant.chosen_option === bet.winning_option;
+                    });
+                case 'stat_all':
+                    // Mostrar todas las apuestas
+                    return allBets;
+                case 'stat_active':
+                    // Mostrar apuestas abiertas y cerradas
+                    return allBets.filter(bet => bet.status === 'open' || bet.status === 'closed');
+                case 'stat_completed':
+                    // Mostrar apuestas completadas
+                    return allBets.filter(bet => bet.status === 'completed');
+                case 'stat_paid':
+                    // Mostrar apuestas pagadas
+                    return allBets.filter(bet => bet.status === 'paid');
+                case 'stat_owed':
+                    // Mostrar apuestas completadas no pagadas (deudas pendientes)
+                    return allBets.filter(bet => bet.status === 'completed');
+                default:
+                    return allBets;
+            }
+        }
+
+        async function applyHallFilter(categoryType) {
+            if (!hallOfFameData) return;
+            
+            let data, categoryName;
+            
+            switch(categoryType) {
+                case 'king':
+                    data = hallOfFameData.king_of_tortillas;
+                    categoryName = '👑 Rey de las Tortillas';
+                    break;
+                case 'winning_streak':
+                    data = hallOfFameData.winning_streak;
+                    categoryName = '🔥 Racha Ganadora';
+                    break;
+                case 'compulsive':
+                    data = hallOfFameData.compulsive_better;
+                    categoryName = '🎰 Apostador Compulsivo';
+                    break;
+                case 'generous':
+                    data = hallOfFameData.generous_one;
+                    categoryName = '⚡ El Generoso';
+                    break;
+                case 'worst_payer':
+                    data = hallOfFameData.worst_payer;
+                    categoryName = '💸 Peor Pagador';
+                    break;
+                case 'losing_streak':
+                    data = hallOfFameData.losing_streak;
+                    categoryName = '💀 Racha Perdedora';
+                    break;
+                default:
+                    return;
+            }
+            
+            if (!data) return;
+            
+            activeHallFilter = { category: categoryType, data, categoryName };
+            switchTab('activas');
+            await loadActiveBets();
+        }
+
+        function clearHallFilter() {
+            activeHallFilter = null;
+            loadActiveBets();
+        }
+
+        async function applyRankingFilter(userId) {
+            if (!rankingData) return;
+            
+            const user = rankingData.find(r => r.user_id === userId);
+            if (!user) return;
+            
+            activeHallFilter = {
+                category: 'ranking_user',
+                data: user,
+                categoryName: `🏆 ${user.display_name} - Victorias`
+            };
+            switchTab('activas');
+            await loadActiveBets();
+        }
+
+        async function applyStatFilter(statType) {
+            const categoryNames = {
+                'all': '📊 Todas las apuestas',
+                'active': '🟢 Apuestas activas',
+                'completed': '✅ Apuestas completadas',
+                'paid': '💚 Tortillas pagadas',
+                'owed': '💸 Tortillas pendientes'
+            };
+            
+            activeHallFilter = {
+                category: `stat_${statType}`,
+                data: {},
+                categoryName: categoryNames[statType]
+            };
+            switchTab('activas');
+            await loadActiveBets();
+        }
+
+        async function loadActiveBets() {
+            try {
+                let betsList;
+                
+                // Si hay filtro activo, cargar todas las apuestas para filtrar
+                if (activeHallFilter) {
+                    const openBets = await bets.getBets('open');
+                    const closedBets = await bets.getBets('closed');
+                    const completedBets = await bets.getBets('completed');
+                    const paidBets = await bets.getBets('paid');
+                    const allBets = [...openBets, ...closedBets, ...completedBets, ...paidBets];
+                    betsList = filterBetsByHallCategory(allBets, activeHallFilter.category, activeHallFilter.data);
+                } else {
+                    // Sin filtro: mostrar apuestas en curso (open + closed) y pendientes de pago (completed)
+                    const openBets = await bets.getBets('open');
+                    const closedBets = await bets.getBets('closed');
+                    const completedBets = await bets.getBets('completed');
+                    betsList = [...openBets, ...closedBets, ...completedBets];
+                }
+                
+                const container = document.getElementById('betsContainer');
+
+                // Mostrar indicador de filtro activo
+                const filterIndicator = activeHallFilter ? `
+                    <div class="mb-4 p-3 bg-blue-50 border-l-4 border-blue-500 rounded flex justify-between items-center">
+                        <div>
+                            <span class="font-bold text-blue-700">🔍 Filtrando:</span>
+                            <span class="text-sm text-blue-600">${activeHallFilter.categoryName} - ${activeHallFilter.data.display_name}</span>
+                        </div>
+                        <button onclick="clearHallFilter()" class="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">
+                            ✕ Limpiar
+                        </button>
+                    </div>
+                ` : '';
+
+                if (betsList.length === 0) {
+                    container.innerHTML = filterIndicator + '<p class="text-gray-500 text-center py-8">No hay apuestas para estos criterios</p>';
+                    return;
+                }
+
+                container.innerHTML = filterIndicator + betsList.map(bet => {
+                    const isCompleted = bet.status === 'completed';
+                    const isClosed = bet.status === 'closed';
+                    const isOpen = bet.status === 'open';
+                    const isCreator = auth.user && bet.creator_id === auth.user.id;
+                    const isParticipant = bet.participants.some(p => p.user_id === auth.user.id);
+                    const canInteract = isCreator || isParticipant;
+                    
+                    // Verificar si el usuario actual es participante sin opción elegida
+                    const currentParticipant = bet.participants.find(p => p.user_id === auth.user.id);
+                    const needsToChoose = currentParticipant && !currentParticipant.chosen_option;
+                    
+                    // Contar participantes con opción elegida
+                    const participantsWithChoice = bet.participants.filter(p => p.chosen_option).length;
+                    const hasMinimumParticipants = participantsWithChoice >= 2;
+                    
+                    return `
+                        <div class="border-2 ${isCompleted ? 'border-green-400 bg-green-50' : isClosed ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'} rounded-lg p-4 hover:shadow-lg transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="font-bold text-lg flex-1">${bet.title}</h4>
+                                <div class="flex gap-2">
+                                    ${isCreator ? '<span class="px-2 py-1 bg-orange-500 text-white text-xs rounded-full">Creador</span>' : ''}
+                                    ${isCompleted ? '<span class="px-2 py-1 bg-green-500 text-white text-xs rounded-full">Completada ✅</span>' : isClosed ? '<span class="px-2 py-1 bg-yellow-500 text-white text-xs rounded-full">Cerrada 🔒</span>' : '<span class="px-2 py-1 bg-blue-500 text-white text-xs rounded-full">Abierta 🔵</span>'}
+                                </div>
+                            </div>
+                            
+                            ${bet.payment_photo ? `
+                                <div class="mb-3">
+                                    <img src="${bet.payment_photo}" alt="Foto de la apuesta" class="w-full max-w-md mx-auto rounded-lg shadow-md">
+                                </div>
+                            ` : ''}
+                            
+                            <p class="text-gray-600 text-sm mb-2">${bet.description || 'Sin descripción'}</p>
+                            
+                            <div class="text-sm text-gray-500 space-y-1">
+                                <p>👤 Creador: <strong>${bet.creator.display_name}</strong></p>
+                                ${bet.options && bet.options.length > 0 ? `
+                                    <p>🎯 Opciones: <strong>${bet.options.join(', ')}</strong></p>
+                                ` : ''}
+                                <p>👥 Participantes: <strong>${bet.participants.length}</strong> 
+                                    <span class="text-xs ${hasMinimumParticipants ? 'text-green-600' : 'text-amber-600'}">
+                                        (${participantsWithChoice} con opción elegida ${hasMinimumParticipants ? '✅' : '⚠️'})
+                                    </span>
+                                </p>
+                                ${!hasMinimumParticipants && !isCompleted ? `
+                                    <div class="p-2 bg-amber-50 border border-amber-300 rounded text-xs text-amber-700">
+                                        ⚠️ Se requieren mínimo 2 participantes con opción elegida para cerrar/finalizar
+                                    </div>
+                                ` : ''}
+                                ${bet.participants.length > 0 ? `
+                                    <div class="pl-4 space-y-1">
+                                        ${bet.participants.map(p => {
+                                            const name = p.user.display_name;
+                                            let choiceInfo = '';
+                                            if (p.chosen_option) {
+                                                choiceInfo = ` → <strong>${p.chosen_option}</strong>`;
+                                            } else {
+                                                choiceInfo = ` → <span class="text-amber-600 text-xs">⏳ Pendiente</span>`;
+                                            }
+                                            return `<p class="text-xs">• ${name}${choiceInfo}</p>`;
+                                        }).join('')}
+                                    </div>
+                                ` : ''}
+                                ${isCompleted ? `
+                                    <p class="text-green-600 font-medium">
+                                        🏆 Opción ganadora: <strong>${bet.winning_option}</strong>
+                                    </p>
+                                    <p>🥚 Tortillas: <strong>${bet.tortillas_count}</strong></p>
+                                    ${bet.notes ? `<p class="text-gray-600">📝 ${bet.notes}</p>` : ''}
+                                ` : ''}
+                            </div>
+                            
+                            <div class="mt-4 flex gap-2 flex-wrap">
+                                ${!isCompleted && needsToChoose ? `
+                                    <button onclick="handleChooseOption(${bet.id})" 
+                                        class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-hand-pointer"></i> Elegir mi opción
+                                    </button>
+                                ` : ''}
+                                
+                                ${!isCompleted && isOpen && !isParticipant && !isCreator ? `
+                                    <button onclick="handleJoinBet(${bet.id})" 
+                                        class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-user-plus"></i> Unirse
+                                    </button>
+                                ` : ''}
+                                
+                                ${!isCompleted && isCreator ? `
+                                    <button onclick="handleInviteUsers(${bet.id})" 
+                                        class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-user-plus"></i> Invitar
+                                    </button>
+                                ` : ''}
+                                
+                                ${!isCompleted && isCreator && isOpen ? `
+                                    <button onclick="openEditBetModal(${bet.id})" 
+                                        class="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-edit"></i> Editar
+                                    </button>
+                                    <button onclick="handleCloseBet(${bet.id})" 
+                                        class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded font-medium transition ${!hasMinimumParticipants ? 'opacity-60 cursor-not-allowed' : ''}"
+                                        ${!hasMinimumParticipants ? 'disabled title="Se requieren mínimo 2 participantes con opción elegida"' : ''}>
+                                        <i class="fas fa-lock"></i> Cerrar
+                                    </button>
+                                ` : ''}
+                                
+                                ${!isCompleted && isCreator && isClosed ? `
+                                    <button onclick="handleReopenBet(${bet.id})" 
+                                        class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-lock-open"></i> Reabrir
+                                    </button>
+                                ` : ''}
+                                
+                                ${!isCompleted && canInteract ? `
+                                    <button onclick="handleFinalizeBet(${bet.id})" 
+                                        class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded font-medium transition ${!hasMinimumParticipants ? 'opacity-60 cursor-not-allowed' : ''}"
+                                        ${!hasMinimumParticipants ? 'disabled title="Se requieren mínimo 2 participantes con opción elegida"' : ''}>
+                                        <i class="fas fa-trophy"></i> Finalizar${isCreator ? '' : ' (solicitar)'}
+                                    </button>
+                                ` : ''}
+                                
+                                ${isCompleted && canInteract ? `
+                                    <button onclick="handleMarkPaid(${bet.id})" 
+                                        class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-check"></i> Marcar como Pagada${isCreator ? '' : ' (solicitar)'}
+                                    </button>
+                                ` : ''}
+                                
+                                ${isCompleted && isCreator ? `
+                                    <button onclick="handleReopenBet(${bet.id})" 
+                                        class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded font-medium transition">
+                                        <i class="fas fa-lock-open"></i> Reabrir
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error cargando apuestas:', error);
+                const container = document.getElementById('betsContainer');
+                container.innerHTML = '<p class="text-red-500 text-center py-8">Error cargando apuestas</p>';
+            }
+        }
+
+        async function loadHistorial() {
+            try {
+                const paidBets = await bets.getBets('paid');
+                const container = document.getElementById('historialContainer');
+
+                if (paidBets.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500 text-center py-8">No hay apuestas en el historial</p>';
+                    return;
+                }
+
+                container.innerHTML = paidBets.map(bet => `
+                    <div class="border-2 border-gray-300 rounded-lg p-4 bg-gray-50 relative">
+                        <!-- TEMPORAL: Botón pequeño para cambiar/agregar foto (ocultar después) -->
+                        <button onclick="document.getElementById('photoInput-hist-${bet.id}').click()" 
+                            class="absolute bottom-2 right-2 bg-purple-500 hover:bg-purple-600 text-white p-2 rounded-full shadow-lg transition-all hover:scale-110 z-10"
+                            title="${bet.payment_photo ? 'Cambiar foto' : 'Agregar foto'}">
+                            <i class="fas fa-camera text-sm"></i>
+                        </button>
+                        <input type="file" id="photoInput-hist-${bet.id}" accept="image/*" 
+                            onchange="handleBetPhotoChange(${bet.id}, this)" 
+                            class="hidden">
+                        
+                        <h4 class="font-bold text-lg mb-2">${bet.title}</h4>
+                        <p class="text-gray-600 text-sm mb-2">${bet.description || 'Sin descripción'}</p>
+                        
+                        <div class="text-sm text-gray-500 space-y-1 mb-3">
+                            <p>👤 Creador: <strong>${bet.creator.display_name}</strong></p>
+                            <p>👥 Participantes: ${bet.participants.map(p => {
+                                if (p.user) return p.user.display_name;
+                                if (p.participant) return p.participant.name;
+                                return 'Desconocido';
+                            }).join(', ')}</p>
+                            <p>📅 Fecha: ${new Date(bet.created_at).toLocaleDateString('es-ES')}</p>
+                        </div>
+                        
+                        <div class="border-t pt-3 mt-3">
+                            <p class="text-green-600 font-medium">
+                                🏆 Opción ganadora: <strong>${bet.winning_option || 'No definida'}</strong>
+                            </p>
+                            <p class="text-sm">🥚 Tortillas pagadas: <strong>${bet.tortillas_count}</strong></p>
+                            ${bet.notes ? `<p class="text-sm text-gray-600 mt-1">📝 ${bet.notes}</p>` : ''}
+                            
+                            ${bet.payment_photo && bet.payment_photo.length > 0 ? `
+                                <div class="mt-3">
+                                    <p class="text-sm font-medium text-gray-700 mb-2">📸 Foto Recuerdo:</p>
+                                    <img src="${bet.payment_photo}" alt="Foto del pago" 
+                                         class="w-full rounded-lg border-2 border-orange-300 cursor-pointer hover:opacity-90 transition"
+                                         onclick="showPhotoViewModal(this.src)"
+                                         style="max-height: 250px; object-fit: cover;">
+                                </div>
+                            ` : '<p class="text-xs text-gray-400 mt-2">📷 Sin foto recuerdo</p>'}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error cargando historial:', error);
+                const container = document.getElementById('historialContainer');
+                container.innerHTML = '<p class="text-red-500 text-center py-8">Error cargando historial</p>';
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const stats = await bets.getGlobalStats();
+                console.log('📊 Estadísticas recibidas:', stats);
+                
+                // Guardar datos en variable global
+                statsData = stats;
+                
+                // Actualizar estadísticas
+                document.getElementById('stat-total').textContent = stats.total_bets;
+                document.getElementById('stat-active').textContent = stats.active_bets;
+                document.getElementById('stat-completed').textContent = stats.completed_bets;
+                document.getElementById('stat-tortillas-owed').textContent = stats.total_tortillas_owed;
+                document.getElementById('stat-tortillas-paid').textContent = stats.total_tortillas_paid;
+            } catch (error) {
+                console.error('Error cargando estadísticas:', error);
+            }
+        }
+
+        // Variable global para la apuesta que se está finalizando
+        let currentFinalizingBet = null;
+
+        // Variable global para el filtro activo del Hall of Fame
+        let activeHallFilter = null;
+        
+        // Variable global para almacenar los datos del Hall of Fame
+        let hallOfFameData = null;
+        
+        // Variable global para almacenar datos del ranking
+        let rankingData = null;
+        
+        // Variable global para almacenar estadísticas
+        let statsData = null;
+
+        async function handleFinalizeBet(betId) {
+            try {
+                // Obtener detalles de la apuesta
+                const bet = await bets.getBet(betId);
+                
+                if (!bet.options || bet.options.length === 0) {
+                    showToast('❌ Esta apuesta no tiene opciones definidas', 'error');
+                    return;
+                }
+                
+                // Guardar la apuesta actual
+                currentFinalizingBet = bet;
+                
+                // Limpiar y llenar el select con las opciones
+                const select = document.getElementById('finalizeBetWinnerSelect');
+                select.innerHTML = '<option value="">-- Selecciona la opción ganadora --</option>';
+                bet.options.forEach(option => {
+                    const optionElement = document.createElement('option');
+                    optionElement.value = option;
+                    optionElement.textContent = option;
+                    select.appendChild(optionElement);
+                });
+                
+                // Resetear otros campos
+                document.getElementById('finalizeBetNotes').value = '';
+                document.getElementById('finalizeBetTortillas').value = '1';
+                
+                // Abrir el modal
+                const modal = document.getElementById('finalizeBetModal');
+                modal.style.display = 'flex';
+                modal.classList.remove('hidden');
+            } catch (error) {
+                showToast('❌ Error: ' + getErrorMessage(error), 'error');
+            }
+        }
+
+        function closeFinalizeBetModal() {
+            const modal = document.getElementById('finalizeBetModal');
+            modal.style.display = 'none';
+            modal.classList.add('hidden');
+            currentFinalizingBet = null;
+        }
+
+        async function submitFinalizeBet(event) {
+            event.preventDefault();
+            
+            if (!currentFinalizingBet) return;
+            
+            const winningOption = document.getElementById('finalizeBetWinnerSelect').value;
+            const notes = document.getElementById('finalizeBetNotes').value || '';
+            const tortillas = parseInt(document.getElementById('finalizeBetTortillas').value) || 1;
+            
+            if (!winningOption) {
+                showToast('❌ Debes seleccionar una opción ganadora', 'error');
+                return;
+            }
+            
+            // Guardar referencia al bet ANTES de cerrar el modal
+            const betToFinalize = currentFinalizingBet;
+            
+            try {
+                // Cerrar modal
+                closeFinalizeBetModal();
+                
+                // Mostrar indicador de carga
+                showToast('⏳ Finalizando apuesta...', 'info');
+                
+                // Finalizar apuesta
+                await bets.finalizeBet(betToFinalize.id, winningOption, notes, tortillas);
+                
+                // Obtener datos actualizados y enviar notificación
+                const updatedBet = await bets.getBet(betToFinalize.id);
+                notifyBetFinalized(updatedBet);
+                
+                // Mostrar mensaje de éxito
+                showToast(`✅ Apuesta finalizada!\n🏆 Ganador: ${winningOption}\n🥚 Tortillas: ${tortillas}`, 'success');
+                
+                // Recargar listas
+                loadActiveBets();
+                loadStats();
+            } catch (error) {
+                showToast('❌ Error: ' + getErrorMessage(error), 'error');
+            }
+        }
+
+        // Función auxiliar para extraer mensaje de error
+        function getErrorMessage(error) {
+            if (typeof error === 'string') return error;
+            if (error?.message) return error.message;
+            
+            // Manejar errores de validación de FastAPI/Pydantic
+            if (error?.detail) {
+                // Si detail es un array (errores de validación)
+                if (Array.isArray(error.detail)) {
+                    const messages = error.detail.map(err => {
+                        const field = err.loc ? err.loc.join('.') : 'campo';
+                        return `${field}: ${err.msg}`;
+                    }).join('\n');
+                    return messages || 'Error de validación';
+                }
+                // Si detail es un string
+                if (typeof error.detail === 'string') {
+                    return error.detail;
+                }
+            }
+            
+            if (typeof error === 'object') {
+                try {
+                    return JSON.stringify(error);
+                } catch {
+                    return 'Error desconocido';
+                }
+            }
+            return 'Error desconocido';
+        }
+
+        // Función auxiliar para mostrar notificaciones toast (en lugar de alert)
+        function showToast(message, type = 'info') {
+            // Detectar si es móvil
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            if (isMobile) {
+                // En móvil: usar un toast temporal en lugar de alert
+                const toast = document.createElement('div');
+                toast.className = `fixed top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg z-50 max-w-sm text-center ${
+                    type === 'error' ? 'bg-red-500' : 
+                    type === 'success' ? 'bg-green-500' : 
+                    'bg-blue-500'
+                } text-white font-medium`;
+                toast.style.whiteSpace = 'pre-line';
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.style.transition = 'opacity 0.3s';
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 300);
+                }, type === 'info' ? 2000 : 4000);
+            } else {
+                // En desktop: usar alert tradicional
+                alert(message);
+            }
+        }
+
+        // Variable global para almacenar la foto y el betId actual
+        let currentBetIdForPayment = null;
+        let currentCapturedPhotoBase64 = null;
+        let cameraStream = null;
+
+        async function handleMarkPaid(betId) {
+            // Guardar el betId para usarlo después de capturar la foto
+            currentBetIdForPayment = betId;
+            currentCapturedPhotoBase64 = null;
+            
+            // Abrir el modal de captura de foto
+            await openCameraModal();
+        }
+
+        // TEMPORAL: Función para cambiar foto de apuesta (se ocultará después)
+        async function handleBetPhotoChange(betId, input) {
+            if (!input.files || !input.files[0]) {
+                return;
+            }
+
+            const file = input.files[0];
+            
+            // Validar que sea una imagen
+            if (!file.type.startsWith('image/')) {
+                alert('❌ Por favor selecciona un archivo de imagen válido');
+                return;
+            }
+
+            // Validar tamaño (máx 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('❌ La imagen es muy grande. Máximo 5MB');
+                return;
+            }
+
+            try {
+                showToast('📤 Subiendo imagen...', 'info');
+
+                // Convertir imagen a base64
+                const base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                // Actualizar la apuesta con la nueva foto
+                const response = await fetch(`${API_URL}/api/bets/${betId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${auth.token}`
+                    },
+                    body: JSON.stringify({
+                        payment_photo: base64
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+
+                showToast('✅ Foto actualizada correctamente', 'success');
+                
+                // Recargar historial para mostrar la nueva imagen
+                await loadHistorial();
+                
+                // Limpiar el input
+                input.value = '';
+
+            } catch (error) {
+                console.error('Error actualizando foto:', error);
+                showToast('❌ Error: ' + getErrorMessage(error), 'error');
+            }
+        }
+
+        async function openCameraModal() {
+            const modal = document.getElementById('photoCaptureModal');
+            const video = document.getElementById('cameraPreview');
+            const capturedImg = document.getElementById('capturedPhoto');
+            const captureButtons = document.getElementById('captureButtons');
+            const confirmButtons = document.getElementById('confirmButtons');
+            
+            // Mostrar modal
+            modal.style.display = 'flex';
+            modal.classList.remove('hidden');
+            
+            // Mostrar video, ocultar imagen capturada
+            video.classList.remove('hidden');
+            capturedImg.classList.add('hidden');
+            captureButtons.classList.remove('hidden');
+            confirmButtons.classList.add('hidden');
+            
+            try {
+                // Solicitar acceso a la cámara (preferir cámara trasera en móviles)
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment' // Usar cámara trasera
+                    }
+                });
+                
+                video.srcObject = cameraStream;
+            } catch (error) {
+                console.error('Error accediendo a la cámara:', error);
+                alert('❌ No se pudo acceder a la cámara. Asegúrate de dar permisos.\n\nPuedes continuar sin foto.');
+                closeCameraModal();
+                
+                // Preguntar si quiere continuar sin foto
+                if (confirm('¿Deseas marcar como pagada sin foto recuerdo?')) {
+                    await markAsPaidWithoutPhoto();
+                }
+            }
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('cameraPreview');
+            const canvas = document.getElementById('photoCanvas');
+            const capturedImg = document.getElementById('capturedPhoto');
+            const captureButtons = document.getElementById('captureButtons');
+            const confirmButtons = document.getElementById('confirmButtons');
+            
+            // Configurar canvas con las dimensiones del video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Capturar frame actual del video
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Convertir a base64 (JPEG con calidad 0.8 para reducir tamaño)
+            currentCapturedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            
+            // Mostrar la foto capturada
+            capturedImg.src = currentCapturedPhotoBase64;
+            capturedImg.classList.remove('hidden');
+            video.classList.add('hidden');
+            
+            // Cambiar botones
+            captureButtons.classList.add('hidden');
+            confirmButtons.classList.remove('hidden');
+        }
+
+        function retakePhoto() {
+            const video = document.getElementById('cameraPreview');
+            const capturedImg = document.getElementById('capturedPhoto');
+            const captureButtons = document.getElementById('captureButtons');
+            const confirmButtons = document.getElementById('confirmButtons');
+            
+            // Volver a mostrar el video
+            video.classList.remove('hidden');
+            capturedImg.classList.add('hidden');
+            
+            // Restaurar botones
+            captureButtons.classList.remove('hidden');
+            confirmButtons.classList.add('hidden');
+            
+            currentCapturedPhotoBase64 = null;
+        }
+
+        async function confirmPhoto() {
+            // IMPORTANTE: Guardar la foto ANTES de cerrar el modal
+            const photoToSend = currentCapturedPhotoBase64;
+            const betIdToSend = currentBetIdForPayment;
+            
+            // Cerrar el modal y la cámara
+            closeCameraModal();
+            
+            // Marcar como pagada directamente (el backend envía notificación a Telegram automáticamente)
+            try {
+                await bets.markBetAsPaid(betIdToSend, photoToSend);
+                
+                // Recargar vistas
+                loadActiveBets();
+                loadHistorial();
+                loadStats();
+                
+                showToast('✅ Apuesta marcada como pagada. Notificación enviada a Telegram automáticamente 📱', 'success');
+                
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        function closeCameraModal() {
+            const modal = document.getElementById('photoCaptureModal');
+            
+            // Detener la cámara
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            // Ocultar modal
+            modal.style.display = 'none';
+            modal.classList.add('hidden');
+            
+            // Limpiar variables
+            currentCapturedPhotoBase64 = null;
+        }
+
+        function showPhotoViewModal(photoSrc) {
+            const modal = document.getElementById('photoViewModal');
+            const img = document.getElementById('photoViewImage');
+            
+            img.src = photoSrc;
+            modal.style.display = 'flex';
+            modal.classList.remove('hidden');
+            
+            // Agregar listener para ESC
+            document.addEventListener('keydown', handlePhotoViewEscape);
+        }
+
+        function handlePhotoViewEscape(e) {
+            if (e.key === 'Escape') {
+                closePhotoViewModal();
+            }
+        }
+
+        function closePhotoViewModal() {
+            const modal = document.getElementById('photoViewModal');
+            
+            modal.style.display = 'none';
+            modal.classList.add('hidden');
+            
+            // Remover listener de ESC
+            document.removeEventListener('keydown', handlePhotoViewEscape);
+        }
+
+        // Backend envía notificaciones a Telegram automáticamente
+
+        async function markAsPaidWithoutPhoto() {
+            try {
+                const betIdToSend = currentBetIdForPayment;
+                
+                // Marcar como pagada directamente sin foto (el backend envía notificación a Telegram automáticamente)
+                await bets.markBetAsPaid(betIdToSend, null);
+                
+                // Recargar vistas
+                loadActiveBets();
+                loadHistorial();
+                loadStats();
+                
+                showToast('✅ Apuesta marcada como pagada. Notificación enviada a Telegram automáticamente 📱', 'success');
+                
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        async function handleChooseOption(betId) {
+            try {
+                // Cargar apuesta para ver las opciones disponibles
+                const bet = await bets.getBet(betId);
+                
+                if (!bet.options || bet.options.length === 0) {
+                    alert('❌ Esta apuesta no tiene opciones definidas');
+                    return;
+                }
+                
+                // Crear mensaje con opciones
+                let message = `Selecciona tu opción para apostar:\n\n`;
+                bet.options.forEach((opt, i) => {
+                    message += `${i + 1}. ${opt}\n`;
+                });
+                
+                const optionIndex = prompt(message + '\nIntroduce el número de tu opción:');
+                if (!optionIndex || optionIndex < 1 || optionIndex > bet.options.length) {
+                    return;
+                }
+                
+                const chosenOption = bet.options[parseInt(optionIndex) - 1];
+                
+                if (!confirm(`¿Confirmas que apuestas por "${chosenOption}"?`)) {
+                    return;
+                }
+                
+                await bets.chooseOption(betId, chosenOption);
+                
+                alert(`✅ Opción elegida!\n🎯 Tu opción: ${chosenOption}`);
+                loadActiveBets();
+                
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        async function handleInviteUsers(betId) {
+            try {
+                // Cargar apuesta para ver participantes actuales
+                const bet = await bets.getBet(betId);
+                const currentParticipantIds = bet.participants.map(p => p.user_id);
+                
+                // Cargar todos los usuarios
+                await loadUsersSelector();
+                
+                // Filtrar usuarios que no están en la apuesta y que no son el usuario actual
+                const availableUsers = allUsers.filter(u => 
+                    !currentParticipantIds.includes(u.id) && u.id !== auth.user.id
+                );
+                
+                if (availableUsers.length === 0) {
+                    alert('ℹ️ No hay usuarios disponibles para invitar.\nTodos los usuarios ya participan en esta apuesta.');
+                    return;
+                }
+                
+                // Crear mensaje con lista de usuarios
+                let message = `Usuarios disponibles para invitar:\n\n`;
+                availableUsers.forEach((u, i) => {
+                    message += `${i + 1}. ${u.display_name} (@${u.username})\n`;
+                });
+                message += '\nIntroduce los números separados por comas (ej: 1,3,5):';
+                
+                const selection = prompt(message);
+                if (!selection || selection.trim() === '') {
+                    return;
+                }
+                
+                // Procesar selección
+                const selectedIndices = selection.split(',')
+                    .map(s => parseInt(s.trim()) - 1)
+                    .filter(i => i >= 0 && i < availableUsers.length);
+                
+                if (selectedIndices.length === 0) {
+                    alert('❌ Selección inválida');
+                    return;
+                }
+                
+                const userIds = selectedIndices.map(i => availableUsers[i].id);
+                
+                // Invitar usuarios
+                const result = await bets.inviteUsers(betId, userIds);
+                
+                let successMsg = `✅ ${result.invited} usuario(s) invitado(s)!`;
+                if (result.already_in.length > 0) {
+                    successMsg += `\n⚠️ Ya participaban: ${result.already_in.join(', ')}`;
+                }
+                if (result.not_found.length > 0) {
+                    successMsg += `\n❌ No encontrados (IDs): ${result.not_found.join(', ')}`;
+                }
+                
+                alert(successMsg);
+                loadActiveBets();
+                
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        async function handleCloseBet(betId) {
+            if (!confirm('¿Cerrar esta apuesta?\n\nNadie más podrá unirse, pero los participantes actuales podrán seguir eligiendo sus opciones.')) {
+                return;
+            }
+            
+            try {
+                await bets.closeBet(betId);
+                showToast('🔒 Apuesta cerrada!\n\nYa no pueden unirse nuevos participantes.', 'success');
+                loadActiveBets();
+            } catch (error) {
+                showToast('❌ Error: ' + getErrorMessage(error), 'error');
+            }
+        }
+
+        async function handleReopenBet(betId) {
+            if (!confirm('¿Reabrir esta apuesta?\n\nLos usuarios podrán volver a unirse.')) {
+                return;
+            }
+            
+            try {
+                await bets.reopenBet(betId);
+                showToast('🔓 Apuesta reabierta!\n\nLos usuarios pueden unirse de nuevo.', 'success');
+                loadActiveBets();
+            } catch (error) {
+                showToast('❌ Error: ' + getErrorMessage(error), 'error');
+            }
+        }
+
+        async function loadBets() {
+            // Alias para loadActiveBets por compatibilidad
+            return loadActiveBets();
+        }
+
+        async function loadRanking() {
+            try {
+                const ranking = await bets.getRanking();
+                const container = document.getElementById('rankingContainer');
+                
+                // Guardar datos en variable global
+                rankingData = ranking;
+
+                if (ranking.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500 text-center">Sin datos</p>';
+                    return;
+                }
+
+                container.innerHTML = ranking.slice(0, 5).map((item, i) => `
+                    <div onclick="applyRankingFilter(${item.user_id})" 
+                         class="flex justify-between items-center p-2 bg-amber-50 rounded cursor-pointer hover:shadow-md transition">
+                        <span class="font-bold text-lg text-amber-600">
+                            ${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                        </span>
+                        <span>${item.display_name}</span>
+                        <span class="text-green-600 font-bold">${item.wins} 🎉</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error cargando ranking:', error);
+            }
+        }
+
+        async function loadHallOfFame() {
+            try {
+                const response = await fetch(`${API_URL}/api/stats/hall-of-fame`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (!response.ok) throw new Error('Error obteniendo Hall of Fame');
+                
+                const hall = await response.json();
+                hallOfFameData = hall; // Guardar en variable global
+                const container = document.getElementById('hallOfFameContainer');
+
+                let html = '';
+
+                if (hall.king_of_tortillas) {
+                    html += `
+                        <div onclick="applyHallFilter('king')" 
+                             class="p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-500 cursor-pointer hover:shadow-md transition">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">👑</span>
+                                <div>
+                                    <div class="font-bold">Rey de las Tortillas</div>
+                                    <div class="text-sm text-gray-600">${hall.king_of_tortillas.display_name} - ${hall.king_of_tortillas.wins} victorias</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (hall.winning_streak) {
+                    html += `
+                        <div onclick="applyHallFilter('winning_streak')" 
+                             class="p-3 bg-red-50 rounded-lg border-l-4 border-red-500 cursor-pointer hover:shadow-md transition">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">🔥</span>
+                                <div>
+                                    <div class="font-bold">Racha Ganadora</div>
+                                    <div class="text-sm text-gray-600">${hall.winning_streak.display_name} - ${hall.winning_streak.streak} seguidas</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (hall.compulsive_better) {
+                    html += `
+                        <div onclick="applyHallFilter('compulsive')" 
+                             class="p-3 bg-purple-50 rounded-lg border-l-4 border-purple-500 cursor-pointer hover:shadow-md transition">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">🎰</span>
+                                <div>
+                                    <div class="font-bold">Apostador Compulsivo</div>
+                                    <div class="text-sm text-gray-600">${hall.compulsive_better.display_name} - ${hall.compulsive_better.participations_count} participaciones</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (hall.generous_one) {
+                    html += `
+                        <div onclick="applyHallFilter('generous')" 
+                             class="p-3 bg-green-50 rounded-lg border-l-4 border-green-500 cursor-pointer hover:shadow-md transition">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">⚡</span>
+                                <div>
+                                    <div class="font-bold">El Generoso</div>
+                                    <div class="text-sm text-gray-600">${hall.generous_one.display_name} - ${hall.generous_one.tortillas_paid} tortillas pagadas</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (hall.worst_payer) {
+                    html += `
+                        <div onclick="applyHallFilter('worst_payer')" 
+                             class="p-3 bg-orange-50 rounded-lg border-l-4 border-orange-500 cursor-pointer hover:shadow-md transition">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">💸</span>
+                                <div>
+                                    <div class="font-bold">Peor Pagador</div>
+                                    <div class="text-sm text-gray-600">${hall.worst_payer.display_name} - ${hall.worst_payer.pending_tortillas} tortillas pendientes</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (hall.losing_streak) {
+                    html += `
+                        <div onclick="applyHallFilter('losing_streak')" 
+                             class="p-3 bg-gray-50 rounded-lg border-l-4 border-gray-500 cursor-pointer hover:shadow-md transition">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">💀</span>
+                                <div>
+                                    <div class="font-bold">Racha Perdedora</div>
+                                    <div class="text-sm text-gray-600">${hall.losing_streak.display_name} - ${hall.losing_streak.streak} seguidas</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (html === '') {
+                    html = '<p class="text-gray-500 text-center py-4">No hay suficientes datos aún</p>';
+                }
+
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error cargando Hall of Fame:', error);
+                document.getElementById('hallOfFameContainer').innerHTML = 
+                    '<p class="text-red-500 text-center text-sm">Error cargando datos</p>';
+            }
+        }
+
+        async function sendHallOfFameToTelegram() {
+            if (!confirm('¿Enviar Hall of Fame al grupo de Telegram?')) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/telegram/hall-of-fame`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (!response.ok) throw new Error('Error enviando Hall of Fame');
+                
+                showToast('🏆 Hall of Fame enviado a Telegram', 'success');
+            } catch (error) {
+                showToast('❌ Error: ' + getErrorMessage(error), 'error');
+            }
+        }
+
+        async function handleJoinBet(betId) {
+            try {
+                // Obtener detalles de la apuesta para ver las opciones
+                const bet = await bets.getBet(betId);
+                
+                if (!bet.options || bet.options.length === 0) {
+                    // Si no hay opciones, unirse sin elegir
+                    await bets.joinBet(betId);
+                    alert('✅ ¡Te uniste a la apuesta!');
+                    loadActiveBets();
+                    return;
+                }
+                
+                // Mostrar opciones
+                let message = `¿Qué opción eliges?\n\n`;
+                bet.options.forEach((opt, i) => {
+                    message += `${i + 1}. ${opt}\n`;
+                });
+                
+                const choice = prompt(message + '\nIntroduce el número de tu opción:');
+                
+                if (!choice || choice < 1 || choice > bet.options.length) {
+                    alert('❌ Debes elegir una opción válida');
+                    return;
+                }
+                
+                const selectedOption = bet.options[parseInt(choice) - 1];
+                
+                await bets.joinBet(betId, selectedOption);
+                
+                alert(`✅ ¡Te uniste a la apuesta!\n🎯 Elegiste: ${selectedOption}`);
+                loadActiveBets();
+            } catch (error) {
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        async function loadUsersSelector() {
+            try {
+                allUsers = await bets.getUsers();
+                const container = document.getElementById('usersSelector');
+                
+                if (allUsers.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-gray-500">No hay usuarios disponibles</p>';
+                    return;
+                }
+                
+                // Eliminar duplicados por ID (por si acaso)
+                const uniqueUsers = Array.from(new Map(allUsers.map(u => [u.id, u])).values());
+                
+                container.innerHTML = uniqueUsers.map(u => `
+                    <div class="border-2 border-gray-200 rounded-lg p-3 hover:bg-green-50 hover:border-green-300 transition">
+                        <div class="flex items-center space-x-3 mb-2">
+                            <input type="checkbox" name="inviteUser" value="${u.id}" 
+                                onchange="toggleUserOptionSelector(${u.id})"
+                                class="w-5 h-5 text-orange-500 focus:ring-orange-500 rounded">
+                            <span class="text-sm flex-1">
+                                <span class="font-bold text-gray-800">${u.display_name}</span>
+                                <span class="text-gray-500 text-xs">(@${u.username})</span>
+                            </span>
+                        </div>
+                        <div class="ml-8">
+                            <label class="text-xs font-medium text-gray-600 block mb-1">¿Qué apuesta este usuario?</label>
+                            <select id="option-${u.id}" name="userOption-${u.id}" 
+                                class="w-full text-sm px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 hidden bg-white"
+                                disabled>
+                                <option value="">Selecciona una opción...</option>
+                            </select>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error cargando usuarios:', error);
+                document.getElementById('usersSelector').innerHTML = 
+                    '<p class="text-sm text-red-500">Error cargando usuarios</p>';
+            }
+        }
+
+        // Inicialización
+        async function init() {
+            if (auth.token) {
+                try {
+                    await auth.loadUser();
+                } catch (error) {
+                    console.log('No hay sesión válida');
+                }
+            }
+            render();
+            
+            // Si está autenticado, cargar datos iniciales
+            if (auth.isAuthenticated()) {
+                loadActiveBets();
+                loadRanking();
+                loadStats();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // FUNCIONES TELEGRAM
+        // ═══════════════════════════════════════════════════════════════
+
+        function openTelegramModal() {
+            document.getElementById('telegramModal').style.display = 'flex';
+        }
+
+        function closeTelegramModal() {
+            document.getElementById('telegramModal').style.display = 'none';
+        }
+
+        function openQRModal() {
+            document.getElementById('qrModal').style.display = 'flex';
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').style.display = 'none';
+        }
+
+        function openAddUserModal() {
+            document.getElementById('addUserModal').style.display = 'flex';
+            // Limpiar campos
+            document.getElementById('newUsername').value = '';
+            document.getElementById('newDisplayName').value = '';
+            document.getElementById('newEmail').value = '';
+            document.getElementById('newPassword').value = '';
+        }
+
+        function closeAddUserModal() {
+            document.getElementById('addUserModal').style.display = 'none';
+        }
+
+        function showQuickAssignModal() {
+            const optionsText = document.getElementById('betOptions').value.trim();
+            const options = optionsText ? optionsText.split('\n').map(opt => opt.trim()).filter(opt => opt.length > 0) : [];
+            
+            if (options.length === 0) {
+                alert('⚠️ Primero debes definir las opciones de la apuesta en el Paso 1');
+                return;
+            }
+            
+            const checkedUsers = document.querySelectorAll('input[name="inviteUser"]:checked');
+            if (checkedUsers.length === 0) {
+                alert('⚠️ Primero debes seleccionar al menos un usuario');
+                return;
+            }
+            
+            // Obtener usuarios sin opción asignada
+            const usersWithoutOption = [];
+            checkedUsers.forEach(checkbox => {
+                const userId = checkbox.value;
+                const select = document.getElementById(`option-${userId}`);
+                if (!select || !select.value) {
+                    const userLabel = checkbox.parentElement.querySelector('span.font-bold');
+                    if (userLabel) {
+                        usersWithoutOption.push({
+                            id: userId,
+                            name: userLabel.textContent
+                        });
+                    }
+                }
+            });
+            
+            if (usersWithoutOption.length === 0) {
+                alert('✅ Todos los usuarios ya tienen una opción asignada');
+                return;
+            }
+            
+            // Llenar el selector de opciones
+            const quickAssignSelect = document.getElementById('quickAssignOption');
+            quickAssignSelect.innerHTML = '<option value="">Selecciona una opción...</option>' +
+                options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+            
+            // Mostrar lista de usuarios
+            document.getElementById('quickAssignUsersList').textContent = 
+                usersWithoutOption.map(u => u.name).join(', ');
+            
+            // Guardar usuarios para posterior asignación
+            window.quickAssignUsers = usersWithoutOption;
+            
+            document.getElementById('quickAssignModal').style.display = 'flex';
+        }
+
+        function closeQuickAssignModal() {
+            document.getElementById('quickAssignModal').style.display = 'none';
+        }
+
+        function applyQuickAssign() {
+            const selectedOption = document.getElementById('quickAssignOption').value;
+            
+            if (!selectedOption) {
+                alert('⚠️ Debes seleccionar una opción');
+                return;
+            }
+            
+            if (!window.quickAssignUsers || window.quickAssignUsers.length === 0) {
+                alert('⚠️ No hay usuarios para asignar');
+                return;
+            }
+            
+            // Asignar la opción a todos los usuarios
+            window.quickAssignUsers.forEach(user => {
+                const select = document.getElementById(`option-${user.id}`);
+                if (select) {
+                    select.value = selectedOption;
+                }
+            });
+            
+            // Actualizar estado del botón
+            updateCreateBetButtonState();
+            
+            alert(`✅ Asignado "${selectedOption}" a ${window.quickAssignUsers.length} usuario(s)`);
+            closeQuickAssignModal();
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // EDICIÓN DE APUESTAS
+        // ═══════════════════════════════════════════════════════════════
+
+        let currentEditBetData = null;  // Guardar datos de la apuesta en edición
+
+        async function openEditBetModal(betId) {
+            try {
+                // Cargar datos de la apuesta
+                const bet = await bets.getBet(betId);
+                currentEditBetData = bet;
+                
+                // Rellenar formulario
+                document.getElementById('editBetId').value = bet.id;
+                document.getElementById('editBetTitle').value = bet.title;
+                document.getElementById('editBetDescription').value = bet.description || '';
+                document.getElementById('editBetOptions').value = bet.options ? bet.options.join('\n') : '';
+                
+                // Cargar participantes actuales
+                await loadEditParticipants(bet);
+                
+                // Cargar usuarios disponibles para añadir
+                await loadEditAddParticipants(bet);
+                
+                // Mostrar modal
+                document.getElementById('editBetModal').style.display = 'flex';
+            } catch (error) {
+                console.error('Error abriendo modal de edición:', error);
+                alert('Error cargando datos de la apuesta');
+            }
+        }
+
+        function closeEditBetModal() {
+            document.getElementById('editBetModal').style.display = 'none';
+            currentEditBetData = null;
+        }
+
+        async function loadEditParticipants(bet) {
+            const container = document.getElementById('editParticipantsList');
+            
+            if (bet.participants.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-500">No hay participantes aún</p>';
+                return;
+            }
+            
+            const options = bet.options || [];
+            
+            container.innerHTML = bet.participants.map(p => `
+                <div class="border-2 border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition" id="edit-participant-${p.user_id}">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-bold text-gray-800">${p.user.display_name}
+                            <span class="text-gray-500 text-xs">(@${p.user.username})</span>
+                        </span>
+                        <button type="button" onclick="markParticipantForRemoval(${p.user_id})" 
+                            class="text-red-500 hover:text-red-700 text-sm px-2 py-1 rounded hover:bg-red-50">
+                            <i class="fas fa-times"></i> Eliminar
+                        </button>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-600 block mb-1">Opción apostada:</label>
+                        <select id="edit-option-${p.user_id}" name="editParticipantOption-${p.user_id}" 
+                            onchange="updateEditBetButtonState()"
+                            class="w-full text-sm px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white">
+                            <option value="">Sin asignar</option>
+                            ${options.map(opt => `<option value="${opt}" ${p.chosen_option === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadEditAddParticipants(bet) {
+            try {
+                const allUsers = await bets.getUsers();
+                const participantIds = bet.participants.map(p => p.user_id);
+                const options = bet.options || [];
+                
+                // Filtrar usuarios que no son participantes
+                const availableUsers = allUsers.filter(u => !participantIds.includes(u.id));
+                
+                const container = document.getElementById('editAddParticipantsSelector');
+                
+                if (availableUsers.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-gray-500">Todos los usuarios ya participan</p>';
+                    return;
+                }
+                
+                container.innerHTML = availableUsers.map(u => `
+                    <div class="border-2 border-gray-200 rounded-lg p-3 hover:bg-green-50 hover:border-green-300 transition" id="edit-add-user-${u.id}">
+                        <div class="flex items-center space-x-3 mb-2">
+                            <input type="checkbox" name="editAddUser" value="${u.id}" 
+                                onchange="toggleEditAddUserOption(${u.id})"
+                                class="w-5 h-5 text-orange-500 focus:ring-orange-500 rounded">
+                            <span class="text-sm flex-1">
+                                <span class="font-bold text-gray-800">${u.display_name}</span>
+                                <span class="text-gray-500 text-xs">(@${u.username})</span>
+                            </span>
+                        </div>
+                        <div class="ml-8">
+                            <label class="text-xs font-medium text-gray-600 block mb-1">¿Qué apuesta?</label>
+                            <select id="edit-add-option-${u.id}" name="editAddUserOption-${u.id}" 
+                                class="w-full text-sm px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 hidden bg-white"
+                                disabled>
+                                <option value="">Selecciona una opción...</option>
+                                ${options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error cargando usuarios disponibles:', error);
+            }
+        }
+
+        function markParticipantForRemoval(userId) {
+            const element = document.getElementById(`edit-participant-${userId}`);
+            if (element) {
+                if (element.classList.contains('opacity-50')) {
+                    // Desmarcar
+                    element.classList.remove('opacity-50', 'bg-red-50', 'border-red-300');
+                    element.classList.add('border-gray-200');
+                    element.querySelector('button').innerHTML = '<i class="fas fa-times"></i> Eliminar';
+                } else {
+                    // Marcar para eliminar
+                    element.classList.add('opacity-50', 'bg-red-50', 'border-red-300');
+                    element.classList.remove('border-gray-200');
+                    element.querySelector('button').innerHTML = '<i class="fas fa-undo"></i> Deshacer';
+                }
+                updateEditBetButtonState();
+            }
+        }
+
+        function toggleEditAddUserOption(userId) {
+            const checkbox = document.querySelector(`input[name="editAddUser"][value="${userId}"]`);
+            const select = document.getElementById(`edit-add-option-${userId}`);
+            const container = document.getElementById(`edit-add-user-${userId}`);
+            
+            if (checkbox && select) {
+                if (checkbox.checked) {
+                    select.classList.remove('hidden');
+                    select.disabled = false;
+                    container?.classList.add('bg-green-50', 'border-green-400');
+                    container?.classList.remove('border-gray-200');
+                    updateEditOptionSelectors();
+                } else {
+                    select.classList.add('hidden');
+                    select.disabled = true;
+                    select.value = '';
+                    container?.classList.remove('bg-green-50', 'border-green-400');
+                    container?.classList.add('border-gray-200');
+                }
+                updateEditBetButtonState();
+            }
+        }
+
+        function updateEditOptionSelectors() {
+            const optionsText = document.getElementById('editBetOptions').value.trim();
+            const options = optionsText ? optionsText.split('\n').map(opt => opt.trim()).filter(opt => opt.length > 0) : [];
+            
+            // Actualizar selectores de participantes existentes
+            document.querySelectorAll('[name^="editParticipantOption-"]').forEach(select => {
+                const currentValue = select.value;
+                if (options.length === 0) {
+                    select.innerHTML = '<option value="">Sin opciones definidas</option>';
+                } else {
+                    select.innerHTML = '<option value="">Sin asignar</option>' + 
+                        options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+                    if (options.includes(currentValue)) {
+                        select.value = currentValue;
+                    }
+                }
+            });
+            
+            // Actualizar selectores de nuevos participantes
+            document.querySelectorAll('[name^="editAddUserOption-"]').forEach(select => {
+                const currentValue = select.value;
+                if (options.length === 0) {
+                    select.innerHTML = '<option value="">⚠️ Define opciones arriba</option>';
+                } else {
+                    select.innerHTML = '<option value="">Selecciona una opción...</option>' + 
+                        options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+                    if (options.includes(currentValue)) {
+                        select.value = currentValue;
+                    }
+                }
+            });
+            
+            updateEditBetButtonState();
+        }
+
+        function updateEditBetButtonState() {
+            const warning = document.getElementById('editValidationWarning');
+            const message = document.getElementById('editValidationMessage');
+            const buttonText = document.getElementById('updateBetButtonText');
+            
+            // Contar cambios
+            let changes = [];
+            
+            // Verificar participantes marcados para eliminar
+            const toRemove = document.querySelectorAll('[id^="edit-participant-"].opacity-50').length;
+            if (toRemove > 0) changes.push(`${toRemove} para eliminar`);
+            
+            // Verificar nuevos participantes
+            const toAdd = document.querySelectorAll('input[name="editAddUser"]:checked').length;
+            if (toAdd > 0) changes.push(`${toAdd} para añadir`);
+            
+            if (changes.length > 0) {
+                warning.classList.remove('hidden');
+                message.textContent = `Cambios pendientes: ${changes.join(', ')}`;
+                buttonText.textContent = 'Guardar Cambios';
+            } else {
+                warning.classList.add('hidden');
+                buttonText.textContent = 'Guardar Cambios';
+            }
+        }
+
+        async function handleUpdateBet(event) {
+            event.preventDefault();
+            
+            try {
+                const betId = parseInt(document.getElementById('editBetId').value);
+                const title = document.getElementById('editBetTitle').value.trim();
+                const description = document.getElementById('editBetDescription').value.trim();
+                const optionsText = document.getElementById('editBetOptions').value.trim();
+                const options = optionsText ? optionsText.split('\n').map(opt => opt.trim()).filter(opt => opt.length > 0) : null;
+                
+                // Recoger participantes a eliminar
+                const removeParticipants = [];
+                document.querySelectorAll('[id^="edit-participant-"].opacity-50').forEach(el => {
+                    const userId = parseInt(el.id.replace('edit-participant-', ''));
+                    removeParticipants.push(userId);
+                });
+                
+                // Recoger nuevos participantes y sus opciones
+                const addParticipants = [];
+                const participantChoices = {};
+                
+                // Opciones actualizadas de participantes existentes
+                currentEditBetData.participants.forEach(p => {
+                    if (!removeParticipants.includes(p.user_id)) {
+                        const select = document.getElementById(`edit-option-${p.user_id}`);
+                        if (select) {
+                            const newOption = select.value;
+                            if (newOption !== p.chosen_option) {
+                                participantChoices[p.user_id] = newOption || null;
+                            }
+                        }
+                    }
+                });
+                
+                // Nuevos participantes
+                document.querySelectorAll('input[name="editAddUser"]:checked').forEach(checkbox => {
+                    const userId = parseInt(checkbox.value);
+                    addParticipants.push(userId);
+                    
+                    const select = document.getElementById(`edit-add-option-${userId}`);
+                    if (select && select.value) {
+                        participantChoices[userId] = select.value;
+                    }
+                });
+                
+                // Construir objeto de actualización
+                const updateData = {
+                    title,
+                    description: description || null,
+                    options
+                };
+                
+                if (removeParticipants.length > 0) {
+                    updateData.remove_participants = removeParticipants;
+                }
+                
+                if (addParticipants.length > 0) {
+                    updateData.add_participants = addParticipants;
+                }
+                
+                if (Object.keys(participantChoices).length > 0) {
+                    updateData.participant_choices = participantChoices;
+                }
+                
+                // Enviar actualización
+                await bets.updateBet(betId, updateData);
+                
+                alert('✅ Apuesta actualizada correctamente');
+                closeEditBetModal();
+                loadActiveBets();
+                
+            } catch (error) {
+                console.error('Error actualizando apuesta:', error);
+                alert('❌ Error: ' + getErrorMessage(error));
+            }
+        }
+
+        async function handleAddUser(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('newUsername').value.trim();
+            const displayName = document.getElementById('newDisplayName').value.trim();
+            const email = document.getElementById('newEmail').value.trim();
+            const phone = document.getElementById('newPhone').value.trim();
+            const password = document.getElementById('newPassword').value;
+
+            if (!username || !displayName || !email || !password) {
+                alert('❌ Completa todos los campos obligatorios');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, display_name: displayName, email, password, phone: phone || null })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+
+                const result = await response.json();
+                alert(`✅ Usuario ${displayName} creado exitosamente`);
+                
+                // Cerrar modal
+                closeAddUserModal();
+                
+                // Recargar lista de usuarios
+                await loadUsersSelector();
+                
+                // Seleccionar automáticamente el nuevo usuario
+                const newUserCheckbox = document.querySelector(`input[name="inviteUser"][value="${result.user.id}"]`);
+                if (newUserCheckbox) {
+                    newUserCheckbox.checked = true;
+                    toggleUserOptionSelector(result.user.id);
+                }
+            } catch (error) {
+                alert('❌ ' + getErrorMessage(error));
+            }
+        }
+
+        function showChangePasswordModal() {
+            // Esperar a que el DOM esté listo
+            setTimeout(() => {
+                const modal = document.getElementById('changePasswordModal');
+                if (modal) {
+                    modal.style.display = 'flex';
+                    modal.classList.remove('hidden');
+                }
+            }, 100);
+        }
+
+        function closeChangePasswordModal() {
+            document.getElementById('changePasswordModal').style.display = 'none';
+        }
+
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const newPassword = document.getElementById('newPasswordInput').value;
+            const confirmPassword = document.getElementById('confirmPasswordInput').value;
+
+            if (newPassword !== confirmPassword) {
+                alert('❌ Las contraseñas no coinciden');
+                return;
+            }
+
+            if (newPassword === 'tortilla123') {
+                alert('❌ No puedes usar la misma contraseña por defecto');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                alert('❌ La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${auth.token}`
+                    },
+                    body: JSON.stringify({
+                        current_password: 'tortilla123',
+                        new_password: newPassword
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw error;
+                }
+
+                alert('✅ Contraseña cambiada exitosamente');
+                
+                // Cerrar modal y continuar con la aplicación
+                closeChangePasswordModal();
+                render();
+                loadActiveBets();
+                loadRanking();
+                loadStats();
+            } catch (error) {
+                alert('❌ ' + getErrorMessage(error));
+            }
+        }
+
+        function notifyNewBet(bet) {
+            // Las notificaciones ahora se envían automáticamente desde el backend via Telegram
+            console.log('🔔 Nueva apuesta creada - Notificación enviada automáticamente por Telegram');
+            showToast('📱 Notificación enviada al grupo de Telegram', 'info');
+        }
+
+        function notifyBetFinalized(bet) {
+            // Las notificaciones ahora se envían automáticamente desde el backend via Telegram
+            console.log('🔔 Apuesta finalizada - Notificación enviada automáticamente por Telegram');
+            showToast('📱 Notificación enviada al grupo de Telegram', 'info');
+        }
+
+        init();
+    </script>
+</body>
+</html>

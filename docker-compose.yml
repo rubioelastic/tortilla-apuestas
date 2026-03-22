@@ -1,0 +1,124 @@
+version: '3.9'
+
+# 🐋 TortillApuestas - Docker Compose Configuration
+# Este archivo orquesta los servicios necesarios para tu aplicación
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # � BACKEND API - FastAPI + Python + SQLite
+  # ═══════════════════════════════════════════════════════════════
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    
+    container_name: tortilla-api
+    restart: unless-stopped
+    
+    environment:
+      # Variables de configuración
+      DB_PATH: /app/data/tortilla_apuestas_dev.db
+      SECRET_KEY: ${SECRET_KEY:-my-super-secret-key-change-this-in-production}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    
+    volumes:
+      # Base de datos SQLite persistente
+      - tortilla_db_data:/app/data
+      # Código (descomentar para desarrollo con hot-reload)
+      # - ./backend:/app
+    
+    ports:
+      # Puerto 8000 interno, expuesto a Nginx
+      - "8000:8000"
+    
+    networks:
+      - tortilla-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+  # ═══════════════════════════════════════════════════════════════
+  # 🌐 FRONTEND - Nginx (sirve index.html)
+  # ═══════════════════════════════════════════════════════════════
+  frontend:
+    image: nginx:alpine
+    container_name: tortilla-frontend
+    restart: unless-stopped
+    
+    volumes:
+      # Carpeta con archivos estáticos (HTML, CSS, JS, etc)
+      - ./frontend:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    
+    ports:
+      # Puerto 3000 interno (será expuesto a través de Nginx Proxy Manager)
+      - "3000:3000"
+    
+    networks:
+      - tortilla-network
+    
+    depends_on:
+      - api
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+# ═══════════════════════════════════════════════════════════════
+# VOLÚMENES PERSISTENTES
+# ═══════════════════════════════════════════════════════════════
+volumes:
+  tortilla_db_data:
+    driver: local
+
+
+# ═══════════════════════════════════════════════════════════════
+# RED INTERNA
+# ═══════════════════════════════════════════════════════════════
+networks:
+  tortilla-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.26.0.0/16
+
+
+# ═══════════════════════════════════════════════════════════════
+# COMANDOS ÚTILES:
+# ═══════════════════════════════════════════════════════════════
+# Iniciar todo:
+#   docker compose up -d
+#
+# Ver logs:
+#   docker compose logs -f api
+#   docker compose logs -f db
+#   docker compose logs -f frontend
+#
+# Salir:
+#   docker compose down
+#
+# Recrear (si hay cambios):
+#   docker compose up -d --build
+#
+# Base de datos - acceder con psql:
+#   docker exec -it tortilla-db psql -U postgres -d tortilla_apuestas
